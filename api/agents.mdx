@@ -1,0 +1,382 @@
+---
+title: Agent interface
+description: Work with different agent frameworks in CooperBench
+---
+
+CooperBench supports multiple agent frameworks through a unified interface. You can use built-in agents or register custom ones.
+
+## Available agents
+
+CooperBench includes the following built-in agents:
+
+- **mini_swe_agent** (default) - Lightweight SWE-agent implementation
+- **mini_swe_agent_v2** - Enhanced version with improved tooling
+- **swe_agent** - Full SWE-agent framework
+- **openhands** - OpenHands agent SDK
+
+## Using agents
+
+### Specify agent in run()
+
+```python
+from cooperbench import run
+
+# Use mini_swe_agent (default)
+run(
+    run_name="default_agent",
+    subset="lite",
+    agent="mini_swe_agent",
+)
+
+# Use SWE-agent
+run(
+    run_name="swe_agent_test",
+    subset="lite",
+    agent="swe_agent",
+    model_name="gpt-4o",
+)
+
+# Use OpenHands
+run(
+    run_name="openhands_test",
+    subset="lite",
+    agent="openhands",
+)
+```
+
+### List available agents
+
+```python
+from cooperbench.agents.registry import list_agents
+
+agents = list_agents()
+print("Available agents:")
+for agent in agents:
+    print(f"  - {agent}")
+```
+
+```
+Available agents:
+  - mini_swe_agent
+  - mini_swe_agent_v2
+  - openhands
+  - swe_agent
+```
+
+## Agent interface
+
+All agents implement the `AgentRunner` protocol:
+
+```python
+class AgentRunner(Protocol):
+    """Protocol for agent framework adapters."""
+
+    def run(
+        self,
+        task: dict,
+        image: str,
+        timeout: int = 3600,
+        **kwargs,
+    ) -> AgentResult:
+        """Run the agent on a task.
+
+        Args:
+            task: Task specification with problem_statement, feature_id, etc.
+            image: Docker image for the environment
+            timeout: Maximum execution time in seconds
+            **kwargs: Agent-specific configuration
+
+        Returns:
+            AgentResult with status, patch, cost, steps, etc.
+        """
+        ...
+```
+
+### AgentResult structure
+
+```python
+class AgentResult:
+    """Result from an agent run."""
+    status: str              # "Submitted", "Failed", "Error"
+    patch: str               # Generated code changes (unified diff)
+    cost: float              # API cost in USD
+    steps: int               # Number of agent steps
+    log: str                 # Execution log
+    error: str | None        # Error message if failed
+```
+
+## Creating custom agents
+
+### Basic custom agent
+
+```python
+from cooperbench.agents.registry import register
+from dataclasses import dataclass
+
+@dataclass
+class AgentResult:
+    status: str
+    patch: str
+    cost: float
+    steps: int
+    log: str
+    error: str | None = None
+
+@register("my_agent")
+class MyAgentRunner:
+    """Custom agent implementation."""
+
+    def __init__(self, model_name: str = "gpt-4o", **kwargs):
+        self.model_name = model_name
+        self.config = kwargs
+
+    def run(
+        self,
+        task: dict,
+        image: str,
+        timeout: int = 3600,
+        **kwargs,
+    ) -> AgentResult:
+        """Run the agent on a task."""
+        problem_statement = task["problem_statement"]
+        feature_id = task["feature_id"]
+
+        # Your agent implementation here
+        # ...
+
+        return AgentResult(
+            status="Submitted",
+            patch="diff --git a/file.py...",
+            cost=0.50,
+            steps=10,
+            log="Agent execution log...",
+            error=None,
+        )
+```
+
+### Use custom agent
+
+```python
+from cooperbench import run
+
+run(
+    run_name="custom_agent_test",
+    subset="lite",
+    agent="my_agent",
+    model_name="gpt-4o",
+)
+```
+
+### Register external agents
+
+You can also register agents via environment variable:
+
+```bash
+export COOPERBENCH_EXTERNAL_AGENTS="mypackage.agents.custom_agent,otherpackage.agent"
+```
+
+Then use:
+
+```python
+from cooperbench import run
+
+run(
+    run_name="external_agent",
+    subset="lite",
+    agent="custom_agent",  # Assumes @register("custom_agent") in mypackage.agents.custom_agent
+)
+```
+
+## Agent configuration
+
+### Pass agent-specific config
+
+You can pass additional configuration to agents:
+
+```python
+from cooperbench.agents.registry import get_runner
+
+# Get agent with custom config
+runner = get_runner(
+    "mini_swe_agent",
+    model_name="gpt-4o",
+    temperature=0.7,
+    max_tokens=4000,
+)
+```
+
+### Use config file
+
+For complex configurations, use a config file:
+
+```python
+from cooperbench import run
+
+run(
+    run_name="configured_agent",
+    subset="lite",
+    agent="swe_agent",
+    agent_config="config/swe_agent_custom.yaml",
+)
+```
+
+## Agent task specification
+
+The `task` parameter passed to agents contains:
+
+```python
+{
+    "problem_statement": "Implement feature X...",  # Feature description
+    "feature_id": 1,                                # Which feature to implement
+    "repo": "llama_index_task",                    # Repository name
+    "task_id": 1,                                   # Task ID
+    "redis_url": "redis://localhost:6379",         # For messaging (coop mode)
+    "git_enabled": False,                           # Git collaboration enabled
+    "messaging_enabled": True,                      # Messaging enabled
+}
+```
+
+## Working with agent results
+
+### Access agent logs
+
+```python
+import json
+from pathlib import Path
+from cooperbench import discover_runs
+
+runs = discover_runs(run_name="my_experiment")
+
+for run in runs:
+    log_dir = Path(run["log_dir"])
+
+    # Read result.json
+    with open(log_dir / "result.json") as f:
+        result = json.load(f)
+
+    if run["setting"] == "coop":
+        # Cooperative mode: two agent results
+        for agent_id, agent_result in result["results"].items():
+            print(f"Agent {agent_id}:")
+            print(f"  Status: {agent_result['status']}")
+            print(f"  Cost: ${agent_result['cost']:.2f}")
+            print(f"  Steps: {agent_result['steps']}")
+
+            # Read agent log
+            log_file = log_dir / f"{agent_id}.log"
+            if log_file.exists():
+                log_content = log_file.read_text()
+                print(f"  Log preview: {log_content[:100]}...")
+    else:
+        # Solo mode: single agent result
+        print(f"Status: {result['result']['status']}")
+        print(f"Cost: ${result['result']['cost']:.2f}")
+```
+
+### Extract patches
+
+```python
+from pathlib import Path
+from cooperbench import discover_runs
+
+runs = discover_runs(run_name="my_experiment")
+
+for run in runs:
+    log_dir = Path(run["log_dir"])
+
+    if run["setting"] == "coop":
+        # Read both agent patches
+        patch1 = (log_dir / "agent1.patch").read_text()
+        patch2 = (log_dir / "agent2.patch").read_text()
+        print(f"Agent 1 changed {len(patch1.splitlines())} lines")
+        print(f"Agent 2 changed {len(patch2.splitlines())} lines")
+    else:
+        # Read solo patch
+        patch = (log_dir / "solo.patch").read_text()
+        print(f"Agent changed {len(patch.splitlines())} lines")
+```
+
+## Advanced agent features
+
+### Cooperative mode features
+
+When running in cooperative mode (`setting="coop"`), agents have access to:
+
+#### Messaging
+
+Agents can send messages to each other:
+
+```python
+# In agent implementation
+self.send_message(
+    to_agent="agent2",
+    message="I've implemented the database models",
+)
+```
+
+#### Git collaboration
+
+When `git_enabled=True`, agents can:
+
+- Push changes: `git push origin feature-branch`
+- Pull updates: `git pull origin feature-branch`
+- Merge branches: `git merge other-branch`
+- View history: `git log`
+
+### Environment access
+
+Agents run in Docker containers with:
+
+- Full repository access
+- Python/Node.js/etc. runtime
+- Git (if enabled)
+- Redis client (if messaging enabled)
+
+## Best practices
+
+### Choose the right agent
+
+- **mini_swe_agent**: Fast, lightweight, good for most tasks
+- **mini_swe_agent_v2**: Enhanced tooling, better for complex tasks
+- **swe_agent**: Full-featured, best for maximum capability
+- **openhands**: Alternative framework with different strengths
+
+### Optimize costs
+
+```python
+# Use cheaper models for simple tasks
+run(
+    run_name="cost_optimized",
+    subset="lite",
+    model_name="vertex_ai/gemini-3-flash-preview",  # Cheaper than GPT-4
+)
+```
+
+### Debug agent issues
+
+```python
+# Run single task to see detailed output
+run(
+    run_name="debug_run",
+    repo="llama_index_task",
+    task_id=1,
+    features=[1, 2],
+    agent="mini_swe_agent",
+)
+
+# Check logs
+import json
+from pathlib import Path
+
+log_dir = Path("logs/debug_run/coop/llama_index_task/1/f1_f2")
+with open(log_dir / "result.json") as f:
+    result = json.load(f)
+
+print(result["results"]["agent1"]["error"])
+```
+
+## Related functions
+
+- [run()](/api/run) - Execute tasks with agents
+- [list_agents()](/api/agents#list-available-agents) - List available agents
+- [get_runner()](/api/agents#agent-interface) - Get agent instance

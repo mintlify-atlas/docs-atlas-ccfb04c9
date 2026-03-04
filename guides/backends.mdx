@@ -1,0 +1,473 @@
+---
+title: Backends
+description: Choose the right execution backend for running CooperBench experiments
+---
+
+CooperBench supports three execution backends: Modal (cloud), Docker (local), and GCP (Google Cloud Platform). Each has different tradeoffs for cost, scale, and setup complexity.
+
+## Quick comparison
+
+<CardGroup cols={3}>
+  <Card title="Modal" icon="cloud">
+    **Best for**: Quick starts, medium-scale experiments
+
+    - ✓ Minimal setup
+    - ✓ Auto-scaling
+    - ✓ No infrastructure management
+    - ✗ External service dependency
+    - ✗ Limited customization
+  </Card>
+
+  <Card title="Docker" icon="docker">
+    **Best for**: Local testing, debugging
+
+    - ✓ No cloud account needed
+    - ✓ Fast iteration
+    - ✓ Complete control
+    - ✗ Limited parallelism
+    - ✗ Resource constrained
+  </Card>
+
+  <Card title="GCP" icon="google">
+    **Best for**: Large-scale runs, custom requirements
+
+    - ✓ High scalability
+    - ✓ Cost control
+    - ✓ Full customization
+    - ✗ More complex setup
+    - ✗ Requires GCP account
+  </Card>
+</CardGroup>
+
+## Detailed comparison
+
+| Feature | Modal | Docker | GCP |
+|---------|-------|--------|-----|
+| **Setup time** | 2 minutes | 5 minutes | 10 minutes |
+| **Account required** | Modal | None | Google Cloud |
+| **Parallelism** | 50-100 | 5-10 | 100+ |
+| **Cost model** | Modal credits | Free (local) | Pay-as-you-go |
+| **Customization** | Limited | Full | Full |
+| **Data locality** | External | Local | Your GCP project |
+| **VM control** | None | Local machine | Full control |
+
+## Modal backend
+
+Modal provides serverless infrastructure for running agent sandboxes.
+
+### Setup
+
+<Steps>
+  <Step title="Install Modal">
+    ```bash
+    pip install cooperbench[modal]
+    ```
+  </Step>
+
+  <Step title="Authenticate">
+    ```bash
+    modal setup
+    ```
+
+    This opens a browser to create/link your Modal account.
+  </Step>
+
+  <Step title="Run experiments">
+    ```bash
+    cooperbench run --backend modal -s lite
+    ```
+  </Step>
+</Steps>
+
+### When to use Modal
+
+<Tabs>
+  <Tab title="Good for">
+    - **Quick experimentation**: Get started in minutes
+    - **Medium-scale runs**: 10-100 tasks
+    - **No infrastructure**: Don't want to manage VMs
+    - **Auto-scaling**: Automatic resource management
+  </Tab>
+
+  <Tab title="Not ideal for">
+    - **Large-scale runs**: 1000+ tasks (can be expensive)
+    - **Custom infrastructure**: Need specific VM images or networking
+    - **Data locality**: Must keep data in your cloud
+    - **Cost optimization**: Want granular cost control
+  </Tab>
+</Tabs>
+
+### Pricing
+
+Modal charges based on:
+- Compute time (per second)
+- Memory usage
+- Network egress
+
+See [Modal pricing](https://modal.com/pricing) for current rates.
+
+<Tip>
+  Modal offers free credits for new users. Perfect for trying CooperBench!
+</Tip>
+
+## Docker backend
+
+Docker runs agent sandboxes locally on your machine.
+
+### Setup
+
+<Steps>
+  <Step title="Install Docker">
+    Download from [docker.com](https://www.docker.com/get-started)
+
+    Verify installation:
+    ```bash
+    docker --version
+    ```
+  </Step>
+
+  <Step title="Install CooperBench">
+    ```bash
+    pip install cooperbench[docker]
+    ```
+  </Step>
+
+  <Step title="Run experiments">
+    ```bash
+    cooperbench run --backend docker -s lite --concurrency 5
+    ```
+
+    <Warning>
+      Limit concurrency to 5-10 to avoid overwhelming your machine.
+    </Warning>
+  </Step>
+</Steps>
+
+### When to use Docker
+
+<Tabs>
+  <Tab title="Good for">
+    - **Local testing**: Debug single tasks
+    - **Development**: Iterate on agent code
+    - **No cloud account**: Work completely offline
+    - **Full control**: Inspect containers, modify images
+  </Tab>
+
+  <Tab title="Not ideal for">
+    - **Large experiments**: Limited by local resources
+    - **High parallelism**: CPU/memory constraints
+    - **Long-running tasks**: Ties up your machine
+  </Tab>
+</Tabs>
+
+### Resource requirements
+
+**Recommended specs**:
+- **CPU**: 8+ cores (for concurrency 5-10)
+- **RAM**: 16GB+ (2GB per concurrent task)
+- **Disk**: 50GB+ (for Docker images)
+
+**Example resource usage**:
+```bash
+# Single task
+1 CPU core, 2GB RAM, ~5-30 minutes
+
+# Concurrency 5
+5 CPU cores, 10GB RAM
+
+# Concurrency 10
+10 CPU cores, 20GB RAM
+```
+
+### Configuration
+
+Docker backend settings in agent config:
+
+```yaml
+backend: docker
+
+# Optional: Docker-specific settings
+docker:
+  # Custom network for git collaboration
+  network: cooperbench-net
+
+  # Resource limits per container
+  cpus: 2.0
+  memory: 4g
+```
+
+## GCP backend
+
+GCP runs agent sandboxes on Google Cloud VMs with Batch API for evaluation.
+
+### Setup
+
+See the complete [GCP setup guide](/guides/gcp-setup) for detailed instructions.
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    pip install cooperbench[gcp]
+    ```
+  </Step>
+
+  <Step title="Run configuration wizard">
+    ```bash
+    cooperbench config gcp
+    ```
+
+    The wizard handles:
+    - gcloud authentication
+    - Project selection
+    - Region/zone setup
+    - API validation
+  </Step>
+
+  <Step title="Run experiments">
+    ```bash
+    cooperbench run --backend gcp -s lite
+    cooperbench eval --backend gcp -n my-experiment --concurrency 100
+    ```
+  </Step>
+</Steps>
+
+### When to use GCP
+
+<Tabs>
+  <Tab title="Good for">
+    - **Large-scale runs**: 100-1000+ tasks
+    - **High parallelism**: 50-100+ concurrent tasks
+    - **Cost control**: Use your own GCP credits and quotas
+    - **Data locality**: Keep data in your GCP project
+    - **Custom VMs**: Use custom VM images, networks, etc.
+  </Tab>
+
+  <Tab title="Not ideal for">
+    - **Quick testing**: More setup than Modal
+    - **Small runs**: Overhead not worth it for fewer than 10 tasks
+    - **No GCP account**: Requires Google Cloud
+  </Tab>
+</Tabs>
+
+### Architecture
+
+#### Agent execution
+
+```
+┌──────────────────────────────────────┐
+│ CooperBench (Local)                  │
+│   ↓ SSH via gcloud compute ssh      │
+├──────────────────────────────────────┤
+│ GCP VM (Container-Optimized OS)      │
+│   ├─ Docker Container (Agent)        │
+│   │   └─ Agent code execution        │
+│   └─ Commands via docker exec        │
+└──────────────────────────────────────┘
+```
+
+Each `cooperbench run` task gets:
+- Dedicated VM (e2-medium: 2 vCPU, 4GB RAM)
+- Container-Optimized OS
+- Docker container with task environment
+- Auto-cleanup after completion
+
+#### Evaluation (Batch API)
+
+```
+┌────────────────────────────────────────┐
+│ CooperBench (Local)                    │
+│   ↓ Submit Batch job                   │
+├────────────────────────────────────────┤
+│ GCP Batch (Managed)                    │
+│   ├─ Task 1 (VM 1)                     │
+│   ├─ Task 2 (VM 1)                     │
+│   ├─ Task 3 (VM 2)                     │
+│   └─ Task N (VM M)                     │
+│         ↓ Results                      │
+├────────────────────────────────────────┤
+│ GCS Bucket                             │
+│   └─ Results, patches, manifests       │
+└────────────────────────────────────────┘
+```
+
+Evaluation uses GCP Batch for efficiency:
+- Single job submission for all tasks
+- Parallel execution across VMs
+- Automatic scheduling and cleanup
+- Results stored in GCS
+
+### Cost estimation
+
+Using default settings in us-central1:
+
+#### Agent execution
+```
+VM: e2-medium (2 vCPU, 4GB RAM)
+Cost: ~$0.03/hour
+Typical task: 5-30 minutes
+Per task: $0.0025 - $0.015
+```
+
+#### Evaluation
+```
+VM: 4 vCPU, 16GB RAM per batch worker
+Cost: ~$0.15/hour per VM
+Parallelism: 50 VMs = ~$7.50/hour
+Typical job: 10-30 minutes for 500 tasks
+```
+
+#### Example costs
+- **Small run** (10 tasks): $0.05 - $0.15
+- **Medium run** (100 tasks): $0.50 - $1.50
+- **Large run** (1000 tasks): $5.00 - $10.00
+
+<Tip>
+  GCP free tier includes $300 credit for new users.
+</Tip>
+
+### Configuration
+
+GCP backend settings:
+
+```yaml
+backend: gcp
+
+# GCP-specific configuration
+project_id: my-project
+zone: us-central1-a
+machine_type: e2-medium
+
+# Optional: Custom VM image (for faster startup)
+vm_image_family: cooperbench-eval
+
+# Optional: Custom VPC network (for git collaboration)
+git_network: cooperbench-vpc
+```
+
+## Choosing a backend
+
+### Decision flowchart
+
+```
+Starting CooperBench?
+  ├─ Yes → Use Modal (fastest setup)
+  └─ No ↓
+
+Running < 50 tasks?
+  ├─ Yes → Use Modal or Docker
+  └─ No ↓
+
+Need high parallelism (50+)?
+  ├─ Yes → Use GCP
+  └─ No ↓
+
+Need custom infrastructure?
+  ├─ Yes → Use GCP or Docker
+  └─ No → Use Modal
+```
+
+### Use case recommendations
+
+<AccordionGroup>
+  <Accordion title="I want to try CooperBench quickly">
+    **Use Modal**
+
+    ```bash
+    pip install cooperbench[modal]
+    modal setup
+    cooperbench run --backend modal -s lite
+    ```
+
+    Setup time: 2 minutes
+  </Accordion>
+
+  <Accordion title="I want to debug a single task locally">
+    **Use Docker**
+
+    ```bash
+    pip install cooperbench[docker]
+    cooperbench run --backend docker -r llama_index_task -t 8394 -f 1,2
+    ```
+
+    Best for:
+    - Detailed debugging
+    - Fast iteration
+    - Inspecting agent behavior
+  </Accordion>
+
+  <Accordion title="I want to evaluate 1000+ tasks">
+    **Use GCP**
+
+    ```bash
+    pip install cooperbench[gcp]
+    cooperbench config gcp
+    cooperbench run --backend gcp -s full --concurrency 50
+    cooperbench eval --backend gcp -n my-experiment --concurrency 100
+    ```
+
+    Benefits:
+    - High parallelism
+    - Cost-effective at scale
+    - Complete control
+  </Accordion>
+
+  <Accordion title="I need custom Docker images or networks">
+    **Use GCP or Docker**
+
+    Docker for local:
+    ```yaml
+    backend: docker
+    docker:
+      network: my-custom-network
+      image: custom/agent-env:latest
+    ```
+
+    GCP for cloud:
+    ```yaml
+    backend: gcp
+    vm_image_family: my-custom-image
+    git_network: my-vpc
+    ```
+  </Accordion>
+
+  <Accordion title="I want to minimize costs">
+    **Use Docker** (free, local)
+
+    Or **GCP** (efficient at scale):
+    ```bash
+    # Use spot instances (not yet supported)
+    # Use custom VM images to reduce startup time
+    # Use lifecycle policies to auto-delete old data
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Switching backends
+
+You can mix backends across experiments:
+
+```bash
+# Run experiments with Modal
+cooperbench run --backend modal -s lite -n experiment-1
+
+# Evaluate with GCP for better parallelism
+cooperbench eval --backend gcp -n experiment-1 --concurrency 100
+```
+
+<Tip>
+  Experiments and evaluations use independent backends. Run with one backend, evaluate with another!
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="GCP setup" icon="cloud" href="/guides/gcp-setup">
+    Complete guide to configuring GCP backend
+  </Card>
+  <Card title="Running experiments" icon="play" href="/guides/running-experiments">
+    Learn how to run experiments with different backends
+  </Card>
+  <Card title="Evaluation" icon="check" href="/guides/evaluation">
+    Understand the evaluation process
+  </Card>
+</CardGroup>

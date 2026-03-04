@@ -1,0 +1,379 @@
+---
+title: evaluate()
+description: Evaluate completed benchmark runs by testing patches against feature tests
+---
+
+Test agent-generated patches against feature tests to measure task success. Evaluation can be run automatically after task execution or separately for completed runs.
+
+## Function signature
+
+```python
+from cooperbench import evaluate
+
+evaluate(
+    run_name: str,
+    subset: str | None = None,
+    repo: str | None = None,
+    task_id: int | None = None,
+    features: list[int] | None = None,
+    concurrency: int = 10,
+    force: bool = False,
+    backend: str = "modal",
+) -> None
+```
+
+## Parameters
+
+<ParamField path="run_name" type="str" required>
+  Name of the run to evaluate. Corresponds to the run name used in `run()`.
+</ParamField>
+
+<ParamField path="subset" type="str | None" default="None">
+  Filter evaluation to a specific subset (e.g., `"lite"`).
+</ParamField>
+
+<ParamField path="repo" type="str | None" default="None">
+  Filter by repository name (e.g., `"llama_index_task"`).
+</ParamField>
+
+<ParamField path="task_id" type="int | None" default="None">
+  Filter to a specific task ID.
+</ParamField>
+
+<ParamField path="features" type="list[int] | None" default="None">
+  Specific feature pair to evaluate (e.g., `[1, 2]`).
+</ParamField>
+
+<ParamField path="concurrency" type="int" default="10">
+  Number of parallel evaluations to run.
+</ParamField>
+
+<ParamField path="force" type="bool" default="False">
+  If `True`, re-evaluates even if `eval.json` already exists.
+</ParamField>
+
+<ParamField path="backend" type="str" default="modal">
+  Evaluation backend: `"modal"`, `"docker"`, or `"gcp"`.
+</ParamField>
+
+## Basic usage
+
+### Evaluate all runs
+
+```python
+from cooperbench import evaluate
+
+# Evaluate all tasks in a run
+evaluate(run_name="my_experiment")
+```
+
+### Evaluate a subset
+
+```python
+# Evaluate only lite subset tasks
+evaluate(
+    run_name="my_experiment",
+    subset="lite",
+)
+```
+
+### Evaluate specific tasks
+
+```python
+# Evaluate a single task
+evaluate(
+    run_name="my_experiment",
+    repo="llama_index_task",
+    task_id=1,
+    features=[1, 2],
+)
+```
+
+## Advanced usage
+
+### Force re-evaluation
+
+```python
+# Re-run evaluation even if results exist
+evaluate(
+    run_name="my_experiment",
+    force=True,
+)
+```
+
+### Use different backend
+
+```python
+# Evaluate using Docker instead of Modal
+evaluate(
+    run_name="my_experiment",
+    backend="docker",
+    concurrency=5,
+)
+```
+
+### High-concurrency evaluation
+
+```python
+# Evaluate many tasks in parallel
+evaluate(
+    run_name="large_experiment",
+    concurrency=50,
+    backend="modal",
+)
+```
+
+## How evaluation works
+
+### Cooperative mode
+
+For cooperative runs, evaluation:
+
+1. Merges patches from both agents (`agent1.patch` + `agent2.patch`)
+2. Applies the merged patch to the repository
+3. Applies feature 1 tests and runs them
+4. Applies feature 2 tests and runs them
+5. Reports whether both feature tests pass
+
+### Solo mode
+
+For solo runs, evaluation:
+
+1. Applies the single agent's patch (`solo.patch`)
+2. Applies feature 1 tests and runs them
+3. Applies feature 2 tests and runs them
+4. Reports whether both feature tests pass
+
+## Evaluation results
+
+Results are saved to `logs/{run_name}/{setting}/{repo}/{task_id}/{features}/eval.json`:
+
+```json
+{
+  "repo": "llama_index_task",
+  "task_id": 1,
+  "features": [1, 2],
+  "setting": "coop",
+  "merge": {
+    "status": "success",
+    "strategy": "recursive"
+  },
+  "feature1": {
+    "passed": true,
+    "tests_passed": 5,
+    "tests_failed": 0,
+    "test_output": "..."
+  },
+  "feature2": {
+    "passed": true,
+    "tests_passed": 3,
+    "tests_failed": 0,
+    "test_output": "..."
+  },
+  "both_passed": true,
+  "error": null,
+  "evaluated_at": "2024-03-04T10:30:00"
+}
+```
+
+### Result fields
+
+<ResponseField name="repo" type="str">
+  Repository name
+</ResponseField>
+
+<ResponseField name="task_id" type="int">
+  Task identifier
+</ResponseField>
+
+<ResponseField name="features" type="list[int]">
+  Feature pair that was tested
+</ResponseField>
+
+<ResponseField name="setting" type="str">
+  Execution mode (`"coop"` or `"solo"`)
+</ResponseField>
+
+<ResponseField name="merge" type="object | null">
+  Merge information (cooperative mode only):
+  - `status`: `"success"`, `"conflict"`, or `"failed"`
+  - `strategy`: Git merge strategy used
+</ResponseField>
+
+<ResponseField name="feature1" type="object">
+  Feature 1 test results:
+  - `passed`: Whether all tests passed
+  - `tests_passed`: Number of passing tests
+  - `tests_failed`: Number of failing tests
+  - `test_output`: Full test output
+</ResponseField>
+
+<ResponseField name="feature2" type="object">
+  Feature 2 test results (same structure as `feature1`)
+</ResponseField>
+
+<ResponseField name="both_passed" type="bool">
+  `True` if both feature tests passed
+</ResponseField>
+
+<ResponseField name="error" type="str | null">
+  Error message if evaluation failed
+</ResponseField>
+
+<ResponseField name="evaluated_at" type="str">
+  ISO timestamp of evaluation
+</ResponseField>
+
+## Summary output
+
+A summary is also saved to `logs/{run_name}/eval_summary.json`:
+
+```json
+{
+  "run_name": "my_experiment",
+  "evaluated_at": "2024-03-04T10:30:00",
+  "total_runs": 100,
+  "passed": 75,
+  "failed": 20,
+  "errors": 5,
+  "skipped": 0,
+  "pass_rate": 0.75,
+  "results": [
+    {"run": "llama_index_task/1/f1,f2", "status": "pass"},
+    {"run": "django_task/5/f1,f3", "status": "fail"}
+  ]
+}
+```
+
+## Related functions
+
+- [run()](/api/run) - Execute benchmark tasks
+- [discover_runs()](/api/discover#discover_runs) - Query completed runs
+- [test_merged()](/api/evaluate#test_merged) - Low-level patch testing (cooperative)
+- [test_solo()](/api/evaluate#test_solo) - Low-level patch testing (solo)
+
+## Low-level testing functions
+
+### test_merged()
+
+Test merged patches from two agents (cooperative mode).
+
+```python
+from cooperbench import test_merged
+
+result = test_merged(
+    repo_name="llama_index_task",
+    task_id=1,
+    feature1_id=1,
+    feature2_id=2,
+    patch1="diff --git a/file.py...",
+    patch2="diff --git a/other.py...",
+    timeout=600,
+    backend="modal",
+)
+
+print(result["both_passed"])  # True if both features pass
+print(result["merge"]["status"])  # "success", "conflict", or "failed"
+```
+
+#### Parameters
+
+<ParamField path="repo_name" type="str" required>
+  Repository name
+</ParamField>
+
+<ParamField path="task_id" type="int" required>
+  Task ID
+</ParamField>
+
+<ParamField path="feature1_id" type="int" required>
+  First feature ID
+</ParamField>
+
+<ParamField path="feature2_id" type="int" required>
+  Second feature ID
+</ParamField>
+
+<ParamField path="patch1" type="str | Path | None" default="None">
+  First agent's patch (as string or path to .patch file)
+</ParamField>
+
+<ParamField path="patch2" type="str | Path | None" default="None">
+  Second agent's patch (as string or path to .patch file)
+</ParamField>
+
+<ParamField path="timeout" type="int" default="600">
+  Maximum execution time in seconds
+</ParamField>
+
+<ParamField path="backend" type="str" default="modal">
+  Evaluation backend
+</ParamField>
+
+### test_solo()
+
+Test a single patch against both feature tests (solo mode).
+
+```python
+from cooperbench import test_solo
+
+result = test_solo(
+    repo_name="llama_index_task",
+    task_id=1,
+    feature1_id=1,
+    feature2_id=2,
+    patch="diff --git a/file.py...",
+    timeout=600,
+    backend="modal",
+)
+
+print(result["both_passed"])  # True if both features pass
+```
+
+Parameters are identical to `test_merged()` except only one `patch` parameter is used.
+
+### run_patch_test()
+
+Test a patch against a single feature's tests.
+
+```python
+from cooperbench import run_patch_test
+
+result = run_patch_test(
+    repo_name="llama_index_task",
+    task_id=1,
+    feature_id=1,
+    agent_patch="diff --git a/file.py...",
+    timeout=600,
+    backend="modal",
+)
+
+print(f"Passed: {result['passed']}")
+print(f"Tests passed: {result['tests_passed']}/{result['tests_total']}")
+```
+
+#### Parameters
+
+<ParamField path="repo_name" type="str" required>
+  Repository name
+</ParamField>
+
+<ParamField path="task_id" type="int" required>
+  Task ID
+</ParamField>
+
+<ParamField path="feature_id" type="int" required>
+  Feature ID to test
+</ParamField>
+
+<ParamField path="agent_patch" type="str | Path | None" default="None">
+  Agent's patch (as string or path). If `None`, uses gold patch from dataset.
+</ParamField>
+
+<ParamField path="timeout" type="int" default="600">
+  Maximum execution time in seconds
+</ParamField>
+
+<ParamField path="backend" type="str" default="modal">
+  Evaluation backend
+</ParamField>

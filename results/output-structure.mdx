@@ -1,0 +1,670 @@
+---
+title: Output structure
+description: Complete reference for CooperBench's output format including logs directory, trajectory files, patches, and evaluation results
+---
+
+CooperBench generates structured output for every experiment run, including agent trajectories, generated patches, and evaluation results. Understanding this structure is essential for analyzing agent behavior and debugging failures.
+
+## Directory structure
+
+All experiment outputs are saved to the `logs/` directory with the following structure:
+
+```
+logs/
+  {run_name}/
+    {setting}/              # "coop" or "solo"
+      {repo_name}_task/
+        {task_id}/
+          f{i}_f{j}/        # Feature pair (sorted)
+            # Cooperative mode files
+            agent{i}.patch
+            agent{j}.patch
+            agent{i}_traj.json
+            agent{j}_traj.json
+            conversation.json
+            
+            # Solo mode files
+            solo.patch
+            solo_traj.json
+            
+            # Common files
+            result.json
+            eval.json         # Added after evaluation
+    
+    eval_summary.json       # Overall evaluation summary
+```
+
+### Path components
+
+<ParamField path="run_name" type="string" required>
+  Experiment name specified with `-n` or `--name` flag when running `cooperbench run`
+</ParamField>
+
+<ParamField path="setting" type="string" required>
+  Either `"coop"` (two agents) or `"solo"` (one agent). Automatically determined by `--setting` flag.
+</ParamField>
+
+<ParamField path="repo_name" type="string" required>
+  Repository name with `_task` suffix (e.g., `llama_index_task`, `pallets_jinja_task`)
+</ParamField>
+
+<ParamField path="task_id" type="integer" required>
+  Task ID number from the dataset (e.g., `1621`, `8394`)
+</ParamField>
+
+<ParamField path="f{i}_f{j}" type="string" required>
+  Feature pair directory with sorted feature IDs (e.g., `f1_f3`, `f2_f5`)
+</ParamField>
+
+## Cooperative mode output
+
+When running with `--setting coop` (default), CooperBench generates per-agent outputs:
+
+### Agent patches
+
+<CodeGroup>
+```bash agent{i}.patch
+diff --git a/src/module.py b/src/module.py
+index 1234567..abcdefg 100644
+--- a/src/module.py
++++ b/src/module.py
+@@ -10,6 +10,12 @@ def existing_function():
+     return result
+ 
++def new_feature():
++    """Implementation of feature i."""
++    # Agent i's changes
++    pass
++
+ def another_function():
+     pass
+```
+</CodeGroup>
+
+**File naming**: `agent{i}.patch` where `{i}` is the feature ID assigned to that agent.
+
+**Content**: Standard unified diff format containing all changes made by the agent.
+
+**Note**: Patch files are filtered to exclude test file changes before evaluation.
+
+### Agent trajectories
+
+<CodeGroup>
+```json agent{i}_traj.json
+{
+  "repo": "llama_index_task",
+  "task_id": 1234,
+  "feature_id": 1,
+  "agent_id": "agent1",
+  "model": "gpt-4o",
+  "status": "Completed",
+  "cost": 0.045,
+  "steps": 12,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Implement the following feature:\n\n## Feature description\n...",
+      "timestamp": 1234567890.123
+    },
+    {
+      "role": "assistant",
+      "content": "I'll implement this feature by...",
+      "timestamp": 1234567891.456,
+      "cost": 0.002,
+      "input_tokens": 1500,
+      "output_tokens": 300
+    },
+    {
+      "role": "tool",
+      "name": "read_file",
+      "content": "File contents...",
+      "timestamp": 1234567892.789
+    }
+  ]
+}
+```
+</CodeGroup>
+
+#### Trajectory schema
+
+<ResponseField name="repo" type="string" required>
+  Repository name (e.g., `"llama_index_task"`)
+</ResponseField>
+
+<ResponseField name="task_id" type="integer" required>
+  Task ID number
+</ResponseField>
+
+<ResponseField name="feature_id" type="integer" required>
+  Feature ID assigned to this agent
+</ResponseField>
+
+<ResponseField name="agent_id" type="string" required>
+  Agent identifier (e.g., `"agent1"`, `"agent2"`)
+</ResponseField>
+
+<ResponseField name="model" type="string" required>
+  LLM model used (e.g., `"gpt-4o"`, `"claude-sonnet-4.5"`)
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  Completion status: `"Completed"`, `"Error"`, or `"Timeout"`
+</ResponseField>
+
+<ResponseField name="cost" type="number" required>
+  Total cost in USD for this agent's execution
+</ResponseField>
+
+<ResponseField name="steps" type="integer" required>
+  Number of agent steps (turns) taken
+</ResponseField>
+
+<ResponseField name="messages" type="array" required>
+  Complete conversation history including user prompts, assistant responses, and tool calls
+</ResponseField>
+
+#### Message format
+
+Each message in the trajectory includes:
+
+<ResponseField name="role" type="string" required>
+  One of: `"user"`, `"assistant"`, `"tool"`, or `"system"`
+</ResponseField>
+
+<ResponseField name="content" type="string" required>
+  Message content (prompt, response, or tool output)
+</ResponseField>
+
+<ResponseField name="timestamp" type="number" required>
+  Unix timestamp when message was created
+</ResponseField>
+
+<ResponseField name="cost" type="number">
+  Cost for this specific message (LLM responses only)
+</ResponseField>
+
+<ResponseField name="input_tokens" type="integer">
+  Input tokens for this turn (LLM responses only)
+</ResponseField>
+
+<ResponseField name="output_tokens" type="integer">
+  Output tokens for this turn (LLM responses only)
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Tool name (tool messages only)
+</ResponseField>
+
+### Conversation log
+
+<CodeGroup>
+```json conversation.json
+[
+  {
+    "from": "agent1",
+    "to": "agent2",
+    "message": "I'm implementing the new API endpoint. Are you modifying the request handler?",
+    "timestamp": 1234567893.456,
+    "received": false
+  },
+  {
+    "from": "agent2",
+    "to": "agent1",
+    "message": "Yes, I'm updating the handler to support the new format. I'll use the validate_request() function.",
+    "timestamp": 1234567895.123,
+    "received": false
+  }
+]
+```
+</CodeGroup>
+
+**Purpose**: Contains only inter-agent messages (filtered from trajectories), sorted by timestamp.
+
+<ResponseField name="from" type="string" required>
+  Sending agent ID
+</ResponseField>
+
+<ResponseField name="to" type="string" required>
+  Receiving agent ID (or `"all"` for broadcasts)
+</ResponseField>
+
+<ResponseField name="message" type="string" required>
+  Message content
+</ResponseField>
+
+<ResponseField name="timestamp" type="number" required>
+  Unix timestamp when sent
+</ResponseField>
+
+<ResponseField name="received" type="boolean" required>
+  Always `false` (only sent messages are logged; received messages are duplicates)
+</ResponseField>
+
+<Note>
+  The conversation log is generated by extracting messages with `role: "agent_message"` from agent trajectories. Only sent messages are included to avoid duplication.
+</Note>
+
+## Solo mode output
+
+When running with `--setting solo`, a single agent handles both features:
+
+### Solo patch
+
+<CodeGroup>
+```bash solo.patch
+diff --git a/src/module.py b/src/module.py
+index 1234567..abcdefg 100644
+--- a/src/module.py
++++ b/src/module.py
+@@ -10,6 +10,18 @@ def existing_function():
+     return result
+ 
++def feature_one():
++    """Implementation of first feature."""
++    pass
++
++def feature_two():
++    """Implementation of second feature."""
++    # Integrates with feature_one
++    pass
++
+ def another_function():
+     pass
+```
+</CodeGroup>
+
+**File**: `solo.patch` — contains changes for both features in a single patch.
+
+### Solo trajectory
+
+<CodeGroup>
+```json solo_traj.json
+{
+  "repo": "llama_index_task",
+  "task_id": 1234,
+  "features": [1, 2],
+  "agent_id": "solo",
+  "model": "gpt-4o",
+  "status": "Completed",
+  "cost": 0.067,
+  "steps": 18,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Implement the following features:\n\n## Feature 1\n...\n\n## Feature 2\n...",
+      "timestamp": 1234567890.123
+    }
+  ]
+}
+```
+</CodeGroup>
+
+**Differences from coop**:
+- `features` is an array (not single `feature_id`)
+- `agent_id` is always `"solo"`
+- No conversation log (single agent)
+- Higher step count (handles both features)
+
+## Result metadata
+
+Every run generates a `result.json` with execution metadata:
+
+<CodeGroup>
+```json result.json (coop mode)
+{
+  "repo": "llama_index_task",
+  "task_id": 1234,
+  "features": [1, 3],
+  "setting": "coop",
+  "run_id": "a7f3c2e1",
+  "run_name": "my-experiment",
+  "agent_framework": "mini_swe_agent",
+  "model": "gpt-4o",
+  "started_at": "2026-03-04T10:30:45.123456",
+  "ended_at": "2026-03-04T10:45:12.789012",
+  "duration_seconds": 867.67,
+  "agents": {
+    "agent1": {
+      "feature_id": 1,
+      "status": "Completed",
+      "cost": 0.045,
+      "steps": 12,
+      "input_tokens": 18500,
+      "output_tokens": 3200,
+      "cache_read_tokens": 12000,
+      "cache_write_tokens": 6500,
+      "patch_lines": 47,
+      "error": null
+    },
+    "agent2": {
+      "feature_id": 3,
+      "status": "Completed",
+      "cost": 0.038,
+      "steps": 10,
+      "input_tokens": 16200,
+      "output_tokens": 2800,
+      "cache_read_tokens": 10500,
+      "cache_write_tokens": 5700,
+      "patch_lines": 34,
+      "error": null
+    }
+  },
+  "total_cost": 0.083,
+  "total_steps": 22,
+  "conversation_messages": 8,
+  "log_dir": "logs/my-experiment/coop/llama_index_task/1234/f1_f3"
+}
+```
+
+```json result.json (solo mode)
+{
+  "repo": "llama_index_task",
+  "task_id": 1234,
+  "features": [1, 3],
+  "setting": "solo",
+  "run_id": "b9d4e5f2",
+  "run_name": "my-experiment",
+  "agent_framework": "mini_swe_agent",
+  "model": "gpt-4o",
+  "started_at": "2026-03-04T10:30:45.123456",
+  "ended_at": "2026-03-04T10:52:33.456789",
+  "duration_seconds": 1308.33,
+  "agent": {
+    "status": "Completed",
+    "cost": 0.089,
+    "steps": 18,
+    "input_tokens": 28700,
+    "output_tokens": 5100,
+    "cache_read_tokens": 19000,
+    "cache_write_tokens": 9700,
+    "patch_lines": 92,
+    "error": null
+  },
+  "total_cost": 0.089,
+  "total_steps": 18,
+  "log_dir": "logs/my-experiment/solo/llama_index_task/1234/f1_f3"
+}
+```
+</CodeGroup>
+
+### Result schema
+
+<ResponseField name="repo" type="string" required>
+  Repository name
+</ResponseField>
+
+<ResponseField name="task_id" type="integer" required>
+  Task ID
+</ResponseField>
+
+<ResponseField name="features" type="array" required>
+  Array of feature IDs (sorted)
+</ResponseField>
+
+<ResponseField name="setting" type="string" required>
+  `"coop"` or `"solo"`
+</ResponseField>
+
+<ResponseField name="run_id" type="string" required>
+  Unique 8-character identifier for this run
+</ResponseField>
+
+<ResponseField name="run_name" type="string" required>
+  Experiment name
+</ResponseField>
+
+<ResponseField name="agent_framework" type="string" required>
+  Agent implementation used (e.g., `"mini_swe_agent"`)
+</ResponseField>
+
+<ResponseField name="model" type="string" required>
+  LLM model identifier
+</ResponseField>
+
+<ResponseField name="started_at" type="string" required>
+  ISO 8601 timestamp
+</ResponseField>
+
+<ResponseField name="ended_at" type="string" required>
+  ISO 8601 timestamp
+</ResponseField>
+
+<ResponseField name="duration_seconds" type="number" required>
+  Total execution time in seconds
+</ResponseField>
+
+<ResponseField name="agents" type="object">
+  Per-agent statistics (coop mode only). Keys are agent IDs.
+</ResponseField>
+
+<ResponseField name="agent" type="object">
+  Single agent statistics (solo mode only)
+</ResponseField>
+
+<ResponseField name="total_cost" type="number" required>
+  Sum of all agent costs in USD
+</ResponseField>
+
+<ResponseField name="total_steps" type="number" required>
+  Sum of all agent steps
+</ResponseField>
+
+<ResponseField name="conversation_messages" type="integer">
+  Number of inter-agent messages (coop mode only)
+</ResponseField>
+
+<ResponseField name="log_dir" type="string" required>
+  Absolute path to output directory
+</ResponseField>
+
+## Evaluation results
+
+After running `cooperbench eval`, each task directory gets an `eval.json` file:
+
+<CodeGroup>
+```json eval.json (coop mode)
+{
+  "repo": "llama_index_task",
+  "task_id": 1234,
+  "features": [1, 3],
+  "setting": "coop",
+  "merge": {
+    "status": "success",
+    "strategy": "recursive"
+  },
+  "feature1": {
+    "passed": true,
+    "test_output": "===== test session starts =====\nplatform linux -- Python 3.12.0\ncollected 5 items\n\ntests/test_feature1.py .....    [100%]\n\n===== 5 passed in 1.23s ====="
+  },
+  "feature2": {
+    "passed": false,
+    "test_output": "===== test session starts =====\nplatform linux -- Python 3.12.0\ncollected 3 items\n\ntests/test_feature3.py ..F    [66%]\n\n===== FAILURES =====\n_____ test_integration _____\nAssertionError: Expected 42, got 41\n\n===== 1 failed, 2 passed in 0.87s ====="
+  },
+  "both_passed": false,
+  "error": null,
+  "evaluated_at": "2026-03-04T11:00:15.123456"
+}
+```
+
+```json eval.json (solo mode)
+{
+  "repo": "llama_index_task",
+  "task_id": 1234,
+  "features": [1, 3],
+  "setting": "solo",
+  "merge": null,
+  "feature1": {
+    "passed": true,
+    "test_output": "===== 5 passed in 1.15s ====="
+  },
+  "feature2": {
+    "passed": true,
+    "test_output": "===== 3 passed in 0.76s ====="
+  },
+  "both_passed": true,
+  "error": null,
+  "evaluated_at": "2026-03-04T11:00:15.123456"
+}
+```
+</CodeGroup>
+
+### Evaluation schema
+
+<ResponseField name="repo" type="string" required>
+  Repository name
+</ResponseField>
+
+<ResponseField name="task_id" type="integer" required>
+  Task ID
+</ResponseField>
+
+<ResponseField name="features" type="array" required>
+  Feature IDs evaluated
+</ResponseField>
+
+<ResponseField name="setting" type="string" required>
+  `"coop"` or `"solo"`
+</ResponseField>
+
+<ResponseField name="merge" type="object">
+  Merge information (coop mode only, `null` for solo)
+  
+  <Expandable title="Merge object fields">
+    <ResponseField name="status" type="string" required>
+      `"success"`, `"conflict"`, or `"error"`
+    </ResponseField>
+    
+    <ResponseField name="strategy" type="string" required>
+      Git merge strategy used (e.g., `"recursive"`, `"ort"`)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="feature1" type="object" required>
+  Test results for first feature
+  
+  <Expandable title="Feature result fields">
+    <ResponseField name="passed" type="boolean" required>
+      Whether all tests passed
+    </ResponseField>
+    
+    <ResponseField name="test_output" type="string" required>
+      Complete test output (stdout + stderr)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="feature2" type="object" required>
+  Test results for second feature (same schema as feature1)
+</ResponseField>
+
+<ResponseField name="both_passed" type="boolean" required>
+  `true` only if both features passed and merge succeeded (for coop)
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if evaluation failed (e.g., setup errors, timeouts)
+</ResponseField>
+
+<ResponseField name="evaluated_at" type="string" required>
+  ISO 8601 timestamp when evaluation completed
+</ResponseField>
+
+## Evaluation summary
+
+After evaluating all runs, CooperBench generates a summary:
+
+<CodeGroup>
+```json eval_summary.json
+{
+  "run_name": "my-experiment",
+  "evaluated_at": "2026-03-04T11:15:30.123456",
+  "total_runs": 100,
+  "passed": 23,
+  "failed": 72,
+  "errors": 5,
+  "skipped": 0,
+  "pass_rate": 0.242,
+  "results": [
+    {
+      "run": "llama_index_task/1234/1,3",
+      "status": "fail"
+    },
+    {
+      "run": "pallets_jinja_task/1621/2,5",
+      "status": "pass"
+    }
+  ]
+}
+```
+</CodeGroup>
+
+<ResponseField name="run_name" type="string" required>
+  Experiment name
+</ResponseField>
+
+<ResponseField name="evaluated_at" type="string" required>
+  ISO 8601 timestamp
+</ResponseField>
+
+<ResponseField name="total_runs" type="integer" required>
+  Total number of evaluated runs
+</ResponseField>
+
+<ResponseField name="passed" type="integer" required>
+  Number of runs where both features passed
+</ResponseField>
+
+<ResponseField name="failed" type="integer" required>
+  Number of runs where at least one feature failed
+</ResponseField>
+
+<ResponseField name="errors" type="integer" required>
+  Number of runs that encountered evaluation errors
+</ResponseField>
+
+<ResponseField name="skipped" type="integer" required>
+  Number of runs skipped (already evaluated, unless `--force`)
+</ResponseField>
+
+<ResponseField name="pass_rate" type="number" required>
+  Success rate: `passed / (passed + failed)`
+</ResponseField>
+
+<ResponseField name="results" type="array" required>
+  Array of per-run results with `run` identifier and `status`
+</ResponseField>
+
+## Example: Full output exploration
+
+Here's how to explore the output from a complete run:
+
+```bash
+# Run experiment
+cooperbench run -n my-exp -r llama_index_task --setting coop
+
+# Evaluate
+cooperbench eval -n my-exp
+
+# Explore output
+cd logs/my-exp/coop/llama_index_task/1234/f1_f3/
+
+# View agent 1's trajectory
+jq '.messages[] | select(.role == "assistant") | .content' agent1_traj.json
+
+# View conversation between agents  
+jq '.[] | "\(.from) -> \(.to): \(.message)"' conversation.json
+
+# View evaluation results
+jq '{passed: .both_passed, feature1: .feature1.passed, feature2: .feature2.passed}' eval.json
+
+# Compare patches
+diff agent1.patch agent2.patch
+
+# Check for merge conflicts
+cat eval.json | jq '.merge.status'
+```
+
+<Tip>
+  Use `jq` for powerful JSON querying and filtering. Install with `brew install jq` (macOS) or `apt-get install jq` (Linux).
+</Tip>

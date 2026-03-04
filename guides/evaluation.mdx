@@ -1,0 +1,535 @@
+---
+title: Evaluation
+description: Understand how CooperBench evaluates agent-generated code changes
+---
+
+CooperBench evaluates agent submissions by testing patches against feature-specific test suites in isolated sandboxes.
+
+## Overview
+
+Evaluation validates that:
+1. **Patches apply cleanly** to the codebase
+2. **Tests pass** for each implemented feature
+3. **Patches merge successfully** (cooperative mode only)
+4. **No test conflicts** occur after merging (cooperative mode)
+
+## Quick start
+
+Evaluate a completed experiment:
+
+```bash
+cooperbench eval -n my-experiment
+```
+
+This will:
+- Discover all completed runs in `logs/my-experiment/`
+- Test each patch in isolated sandboxes
+- Save results to `eval.json` files
+- Display pass/fail summary
+
+<Tip>
+  By default, experiments are evaluated automatically as tasks complete. Use `--no-auto-eval` to disable this.
+</Tip>
+
+## How evaluation works
+
+<Steps>
+  <Step title="Patch extraction">
+    CooperBench extracts generated patches from experiment logs:
+
+    **Solo mode**: Single patch containing both features
+    ```
+    logs/{experiment}/solo/{repo}/{task_id}/f{f1}_f{f2}/solo.patch
+    ```
+
+    **Cooperative mode**: Separate patches from each agent
+    ```
+    logs/{experiment}/coop/{repo}/{task_id}/f{f1}_f{f2}/agent{f1}.patch
+    logs/{experiment}/coop/{repo}/{task_id}/f{f1}_f{f2}/agent{f2}.patch
+    ```
+  </Step>
+
+  <Step title="Patch sanitization">
+    Patches are cleaned before testing:
+    - Test file changes are filtered out
+    - Trailing newlines are normalized
+    - Empty patches are detected
+
+    This ensures agents are evaluated only on implementation code, not test modifications.
+  </Step>
+
+  <Step title="Sandbox creation">
+    Each test runs in an isolated Docker container:
+
+    ```python
+    # From src/cooperbench/eval/sandbox.py
+    eval_backend = get_backend(backend)
+    sandbox = eval_backend.create_sandbox(
+        image=image,
+        timeout=600,
+        workdir="/workspace"
+    )
+    ```
+
+    The sandbox includes:
+    - Pre-built Docker image with repository code
+    - Test infrastructure and dependencies
+    - Isolated environment per evaluation
+  </Step>
+
+  <Step title="Patch testing (solo mode)">
+    For solo mode, the single patch is tested against both feature test suites:
+
+    ```bash
+    # Apply test suite and agent patch
+    bash /usr/local/bin/runner.sh tests.patch agent.patch
+    ```
+
+    Both feature tests must pass for the evaluation to succeed.
+  </Step>
+
+  <Step title="Patch merging (cooperative mode)">
+    For cooperative mode, patches are merged before testing:
+
+    1. **Apply first patch**
+       ```bash
+       git apply agent1.patch
+       git add .
+       git commit -m "Feature 1"
+       ```
+
+    2. **Attempt merge**
+       ```bash
+       git apply agent2.patch
+       ```
+
+    3. **Check merge status**
+       - ✓ **Clean merge**: No conflicts
+       - ⚠ **Conflict**: Overlapping changes detected
+       - ✗ **Failed**: Patch application error
+  </Step>
+
+  <Step title="Test execution">
+    Each feature's tests run independently:
+
+    ```bash
+    # Feature 1 tests
+    bash /usr/local/bin/runner.sh tests1.patch merged.patch
+
+    # Feature 2 tests
+    bash /usr/local/bin/runner.sh tests2.patch merged.patch
+    ```
+
+    The `runner.sh` script:
+    - Applies patches in order
+    - Runs the test suite
+    - Parses test results
+    - Returns exit code 0 if all tests pass
+  </Step>
+
+  <Step title="Result aggregation">
+    Evaluation results combine all test outcomes:
+
+    ```json
+    {
+      "both_passed": true,
+      "feature1": {
+        "passed": true,
+        "tests_passed": 8,
+        "tests_failed": 0
+      },
+      "feature2": {
+        "passed": true,
+        "tests_passed": 12,
+        "tests_failed": 0
+      },
+      "merge": {
+        "status": "clean",
+        "strategy": "apply"
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Command reference
+
+### Basic usage
+
+```bash
+cooperbench eval -n EXPERIMENT_NAME [OPTIONS]
+```
+
+<ParamField path="-n, --name" type="string" required>
+  Experiment name to evaluate (from `logs/` directory)
+
+  ```bash
+  cooperbench eval -n solo-msa-gemini-3-flash-lite
+  ```
+</ParamField>
+
+### Filtering options
+
+<ParamField path="-s, --subset" type="string">
+  Evaluate only tasks from a specific subset
+
+  ```bash
+  cooperbench eval -n my-experiment -s lite
+  ```
+</ParamField>
+
+<ParamField path="-r, --repo" type="string">
+  Evaluate only tasks from a specific repository
+
+  ```bash
+  cooperbench eval -n my-experiment -r llama_index_task
+  ```
+</ParamField>
+
+<ParamField path="-t, --task" type="integer">
+  Evaluate a specific task ID
+
+  ```bash
+  cooperbench eval -n my-experiment -r llama_index_task -t 8394
+  ```
+</ParamField>
+
+<ParamField path="-f, --features" type="string">
+  Evaluate a specific feature pair (comma-separated)
+
+  ```bash
+  cooperbench eval -n my-experiment -r llama_index_task -t 8394 -f 1,2
+  ```
+</ParamField>
+
+### Execution options
+
+<ParamField path="-c, --concurrency" type="integer" default="10">
+  Number of parallel evaluations
+
+  ```bash
+  cooperbench eval -n my-experiment --concurrency 50
+  ```
+
+  <Warning>
+    GCP backend can handle much higher concurrency (50-100+) than local Docker (5-10).
+  </Warning>
+</ParamField>
+
+<ParamField path="--backend" type="enum" default="modal">
+  Evaluation backend: `modal`, `docker`, or `gcp`
+
+  ```bash
+  # Use GCP for large-scale evaluation
+  cooperbench eval -n my-experiment --backend gcp --concurrency 100
+
+  # Use Docker for local testing
+  cooperbench eval -n my-experiment --backend docker --concurrency 5
+  ```
+</ParamField>
+
+<ParamField path="--force" type="boolean">
+  Force re-evaluation even if `eval.json` exists
+
+  ```bash
+  cooperbench eval -n my-experiment --force
+  ```
+</ParamField>
+
+## Evaluation metrics
+
+### Pass rate
+
+The primary metric is **pass rate**: percentage of tasks where both features pass their tests.
+
+```
+pass_rate = passed / (passed + failed)
+```
+
+- **Passed**: Both feature test suites pass
+- **Failed**: One or both feature test suites fail
+- **Errors**: Patch application or test execution errors (excluded from pass rate)
+
+### Per-feature results
+
+Each feature is evaluated independently:
+
+```json
+{
+  "feature1": {
+    "passed": true,
+    "tests_passed": 8,
+    "tests_failed": 0,
+    "tests_total": 8,
+    "output": "test_loader.py::test_load ... PASSED\n..."
+  }
+}
+```
+
+### Merge analysis (cooperative mode)
+
+Cooperative evaluations track merge success:
+
+<CodeGroup>
+```json Clean merge
+{
+  "merge": {
+    "status": "clean",
+    "strategy": "apply"
+  }
+}
+```
+
+```json Conflict detected
+{
+  "merge": {
+    "status": "conflict",
+    "strategy": "apply",
+    "conflicted_files": ["src/core.py"]
+  }
+}
+```
+
+```json Merge failed
+{
+  "merge": {
+    "status": "failed",
+    "error": "patch does not apply"
+  }
+}
+```
+</CodeGroup>
+
+## Output structure
+
+Evaluation results are saved alongside experiment logs:
+
+```
+logs/
+└── my-experiment/
+    ├── eval_summary.json        # Aggregate evaluation stats
+    └── solo/
+        └── llama_index_task/
+            └── 8394/
+                └── f1_f2/
+                    └── eval.json    # Task-specific evaluation
+```
+
+### eval.json format
+
+<CodeGroup>
+```json Solo evaluation
+{
+  "repo": "llama_index_task",
+  "task_id": 8394,
+  "features": [1, 2],
+  "setting": "solo",
+  "merge": null,
+  "feature1": {
+    "passed": true,
+    "tests_passed": 8,
+    "tests_failed": 0,
+    "tests_total": 8,
+    "output": "..."
+  },
+  "feature2": {
+    "passed": true,
+    "tests_passed": 12,
+    "tests_failed": 0,
+    "tests_total": 12,
+    "output": "..."
+  },
+  "both_passed": true,
+  "error": null,
+  "evaluated_at": "2024-03-15T12:30:45"
+}
+```
+
+```json Cooperative evaluation
+{
+  "repo": "dspy_task",
+  "task_id": 142,
+  "features": [1, 3],
+  "setting": "coop",
+  "merge": {
+    "status": "clean",
+    "strategy": "apply"
+  },
+  "feature1": {
+    "passed": true,
+    "tests_passed": 5,
+    "tests_failed": 0,
+    "tests_total": 5,
+    "output": "..."
+  },
+  "feature2": {
+    "passed": false,
+    "tests_passed": 3,
+    "tests_failed": 2,
+    "tests_total": 5,
+    "output": "..."
+  },
+  "both_passed": false,
+  "error": null,
+  "evaluated_at": "2024-03-15T12:35:20"
+}
+```
+</CodeGroup>
+
+### eval_summary.json format
+
+```json
+{
+  "run_name": "my-experiment",
+  "evaluated_at": "2024-03-15T12:40:00",
+  "total_runs": 25,
+  "passed": 23,
+  "failed": 2,
+  "errors": 0,
+  "skipped": 0,
+  "pass_rate": 0.92,
+  "results": [
+    {"run": "llama_index_task/8394/1,2", "status": "pass"},
+    {"run": "dspy_task/142/1,3", "status": "fail"}
+  ]
+}
+```
+
+## Examples
+
+### Evaluate specific repository
+
+Test only LlamaIndex tasks:
+
+```bash
+cooperbench eval -n my-experiment -r llama_index_task
+```
+
+Output:
+```
+cooperbench eval my-experiment
+runs: 12
+backend: modal
+
+✓ pass llama_index_task/8394 [1,2]
+✓ pass llama_index_task/8421 [1,3]
+✗ fail llama_index_task/8445 [2,3]
+...
+
+┌────────────┬─────┐
+│ passed     │  11 │
+│ failed     │   1 │
+│ pass rate  │ 92% │
+└────────────┴─────┘
+```
+
+### Force re-evaluation
+
+Re-run evaluation for all tasks:
+
+```bash
+cooperbench eval -n my-experiment --force
+```
+
+### Large-scale GCP evaluation
+
+Evaluate 1000+ tasks with high parallelism:
+
+```bash
+cooperbench eval \
+  -n my-large-experiment \
+  --backend gcp \
+  --concurrency 100
+```
+
+Output:
+```
+cooperbench eval my-large-experiment
+runs: 1247
+backend: gcp
+
+submitting to GCP Batch ━━━━━━━━━━━━━━━━━━━━━ 100%
+provisioning VMs        ━━━━━━━━━━━━━━━━━━━━━ 100%
+evaluating             ━━━━━━━━━━━━━━━━━━━━━ 100%
+collecting results     ━━━━━━━━━━━━━━━━━━━━━ 100%
+
+✓ pass llama_index_task/8394 [1,2]
+✓ pass dspy_task/142 [1,3]
+...
+```
+
+### Single task evaluation
+
+Debug a specific task with detailed output:
+
+```bash
+cooperbench eval -n my-experiment -r llama_index_task -t 8394 -f 1,2
+```
+
+## Understanding evaluation failures
+
+### Patch application failures
+
+If a patch fails to apply:
+
+```json
+{
+  "error": "patch does not apply",
+  "both_passed": false
+}
+```
+
+**Common causes**:
+- Agent modified wrong files
+- Patch format is invalid
+- Base commit mismatch
+
+### Test failures
+
+If tests fail after applying patch:
+
+```json
+{
+  "feature1": {
+    "passed": false,
+    "tests_passed": 3,
+    "tests_failed": 2,
+    "output": "FAILED test_core.py::test_loader - AssertionError"
+  }
+}
+```
+
+**Common causes**:
+- Incomplete implementation
+- Logic errors in code
+- Side effects on existing tests
+
+### Merge conflicts
+
+If patches conflict in cooperative mode:
+
+```json
+{
+  "merge": {
+    "status": "conflict",
+    "conflicted_files": ["src/core.py"]
+  },
+  "both_passed": false
+}
+```
+
+**Analysis**:
+- Indicates agents modified overlapping code regions
+- Tests whether agents can work independently
+- Key metric for cooperation effectiveness
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Running experiments" icon="play" href="/guides/running-experiments">
+    Learn how to run CooperBench experiments
+  </Card>
+  <Card title="Backends" icon="server" href="/guides/backends">
+    Choose the right evaluation backend
+  </Card>
+</CardGroup>

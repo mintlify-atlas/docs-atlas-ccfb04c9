@@ -1,0 +1,131 @@
+---
+title: cooperbench config
+description: Configure execution backends for CooperBench
+---
+
+The `cooperbench config` command provides interactive configuration wizards for setting up execution backends like GCP, Modal, and Docker.
+
+## Usage
+
+```bash
+cooperbench config <backend> [options]
+```
+
+## Backends
+
+### GCP (Google Cloud Platform)
+
+Configure Google Cloud Platform as your execution backend.
+
+```bash
+cooperbench config gcp
+```
+
+This launches an interactive wizard that:
+
+1. **Checks prerequisites** - Verifies gcloud CLI and Python dependencies are installed
+2. **Authenticates** - Guides you through `gcloud auth login` and Application Default Credentials setup
+3. **Configures project** - Prompts for your GCP project ID and sets it as default
+4. **Sets region/zone** - Configures compute region and zone for task execution
+5. **Validates setup** - Tests API access to ensure everything works
+
+#### Options
+
+<ParamField path="--skip-tests" type="flag">
+  Skip validation tests after configuration. Faster setup, but skips verification that your GCP setup works correctly.
+</ParamField>
+
+#### Example: Quick setup
+
+```bash
+cooperbench config gcp --skip-tests
+```
+
+This runs the configuration wizard but skips the API validation step at the end.
+
+#### Example: Full setup with validation
+
+```bash
+cooperbench config gcp
+```
+
+The wizard will:
+- Check that `gcloud` CLI is installed
+- Verify Python GCP dependencies (`google-cloud-batch`, `google-cloud-compute`, `google-cloud-storage`)
+- Authenticate with both `gcloud auth login` and `gcloud auth application-default login`
+- Prompt for your project ID (or use current gcloud project)
+- Set compute region (default: `us-central1`) and zone (default: `us-central1-a`)
+- Test Compute Engine API access
+- Save configuration to `~/.config/cooperbench/config.json`
+
+## Configuration storage
+
+Configuration is saved to:
+
+```
+~/.config/cooperbench/config.json
+```
+
+Example contents:
+
+```json
+{
+  "gcp_project_id": "my-project-123",
+  "gcp_region": "us-central1",
+  "gcp_zone": "us-central1-a",
+  "gcp_bucket": "cooperbench-eval-my-project-123"
+}
+```
+
+## Prerequisites
+
+### For GCP backend
+
+**1. Install gcloud CLI:**
+
+<CodeGroup>
+
+```bash macOS
+brew install google-cloud-sdk
+```
+
+```bash Linux
+curl https://sdk.cloud.google.com | bash
+```
+
+</CodeGroup>
+
+**2. Install GCP Python dependencies:**
+
+```bash
+uv add --optional gcp 'cooperbench[gcp]'
+```
+
+Or with pip:
+
+```bash
+pip install 'cooperbench[gcp]'
+```
+
+**3. Enable required APIs:**
+
+After configuration, enable these APIs in your GCP project:
+
+- [Compute Engine API](https://console.cloud.google.com/apis/library/compute.googleapis.com)
+- [Cloud Batch API](https://console.cloud.google.com/apis/library/batch.googleapis.com)
+- [Cloud Storage API](https://console.cloud.google.com/apis/library/storage.googleapis.com)
+
+**4. Set up billing:**
+
+Ensure your GCP project has [billing enabled](https://console.cloud.google.com/billing).
+
+## After configuration
+
+Once configured, use the GCP backend with:
+
+```bash
+cooperbench run --backend gcp
+cooperbench eval --backend gcp
+```
+
+See [Backends](/cli/backends) for more details on backend selection.

@@ -1,0 +1,336 @@
+---
+title: Dataset structure
+description: Understanding the 652 benchmark tasks across 12 repositories, including task organization, subsets, and data format
+---
+
+The CooperBench dataset contains **652 tasks** derived from real pull requests across **12 open-source repositories**, spanning Python, TypeScript, Go, and Rust.
+
+<Note>
+The dataset is available on [HuggingFace](https://huggingface.co/datasets/cooperbench/cooperbench) and can be downloaded with:
+```bash
+git clone https://huggingface.co/datasets/cooperbench/cooperbench dataset/
+```
+</Note>
+
+## Task construction methodology
+
+Each task in CooperBench is derived from a real-world pull request:
+
+<Steps>
+  <Step title="PR selection">
+    Pull requests are selected from popular open-source repositories based on:
+    - Multiple independent features in a single PR
+    - Comprehensive test coverage
+    - Clear feature boundaries
+  </Step>
+  
+  <Step title="Feature extraction">
+    Each PR is analyzed to identify independent features that:
+    - Can be implemented separately
+    - Have distinct test suites
+    - May interact when merged together
+  </Step>
+  
+  <Step title="Task packaging">
+    For each task, we extract:
+    - Feature descriptions (from PR or commits)
+    - Implementation patches (golden reference)
+    - Test patches (verification suite)
+    - Setup and runner scripts
+  </Step>
+</Steps>
+
+This ensures every task represents a realistic coordination scenario that developers face in practice.
+
+## Repository coverage
+
+The benchmark spans 12 repositories across multiple languages and domains:
+
+| Repository | Language | Tasks | Features | Domain |
+|------------|----------|-------|----------|--------|
+| [dottxt-ai/outlines](https://github.com/dottxt-ai/outlines) | Python | 3 | 22 | LLM framework |
+| [stanfordnlp/dspy](https://github.com/stanfordnlp/dspy) | Python | 4 | 23 | NLP framework |
+| [go-chi/chi](https://github.com/go-chi/chi) | Go | 3 | 13 | HTTP router |
+| [huggingface/datasets](https://github.com/huggingface/datasets) | Python | 3 | 13 | Dataset library |
+| [run-llama/llama_index](https://github.com/run-llama/llama_index) | Python | 3 | 16 | Data framework |
+| [openai/tiktoken](https://github.com/openai/tiktoken) | Python | 1 | 10 | Tokenizer |
+| [pallets/click](https://github.com/pallets/click) | Python | 3 | 27 | CLI framework |
+| [pallets/jinja](https://github.com/pallets/jinja) | Python | 3 | 30 | Template engine |
+| [python-pillow/Pillow](https://github.com/python-pillow/Pillow) | Python | 3 | 15 | Image library |
+| [react-hook-form/react-hook-form](https://github.com/react-hook-form/react-hook-form) | TypeScript | 2 | 11 | React forms |
+| [samuelcolvin/dirty-equals](https://github.com/samuelcolvin/dirty-equals) | Python | 1 | 9 | Testing utility |
+| [typst/typst](https://github.com/typst/typst) | Rust | 1 | 10 | Typesetting |
+
+<Info>
+**Total**: 30 base tasks, expanded to **652 unique task instances** through feature pair combinations.
+</Info>
+
+## Directory structure
+
+The dataset follows a consistent hierarchy:
+
+```
+dataset/
+├── {repo_name}_task/              # Repository-specific directory
+│   └── task{id}/                  # Individual task
+│       ├── Dockerfile             # Container environment
+│       ├── combined.patch         # Full PR (all features merged)
+│       ├── setup.sh               # Repository setup script
+│       ├── runner.sh              # Test wrapper
+│       ├── run_tests.sh           # Test execution
+│       └── feature{N}/            # Per-feature files
+│           ├── feature.md         # Feature description
+│           ├── feature.patch      # Implementation (gold)
+│           └── tests.patch        # Test cases
+└── subsets/
+    ├── flash.json                 # 20 tasks, 50 pairs (dev)
+    └── lite.json                  # 26 tasks, 100 pairs (quick eval)
+```
+
+### File descriptions
+
+<AccordionGroup>
+  <Accordion title="feature.md - Feature description" icon="file-lines">
+    Natural language description of what the agent should implement. This is the "task prompt" given to agents.
+    
+    Example:
+    ```markdown
+    Add caching support for expensive operations
+    
+    Implement a cache decorator that memoizes function results...
+    ```
+  </Accordion>
+  
+  <Accordion title="feature.patch - Gold implementation" icon="code">
+    The reference implementation extracted from the original PR. Used for comparison and analysis, not given to agents.
+    
+    ```diff
+    diff --git a/src/cache.py b/src/cache.py
+    new file mode 100644
+    index 0000000..1234567
+    --- /dev/null
+    +++ b/src/cache.py
+    @@ -0,0 +1,20 @@
+    +def cache(func):
+    +    memo = {}
+    +    def wrapper(*args):
+    +        if args not in memo:
+    +            memo[args] = func(*args)
+    +        return memo[args]
+    +    return wrapper
+    ```
+  </Accordion>
+  
+  <Accordion title="tests.patch - Test suite" icon="flask">
+    Test cases that verify the feature implementation. Applied before running tests to validate agent output.
+    
+    ```diff
+    diff --git a/tests/test_cache.py b/tests/test_cache.py
+    new file mode 100644
+    index 0000000..abcdef
+    --- /dev/null
+    +++ b/tests/test_cache.py
+    @@ -0,0 +1,15 @@
+    +def test_cache_memoization():
+    +    call_count = 0
+    +    @cache
+    +    def expensive():
+    +        nonlocal call_count
+    +        call_count += 1
+    +        return 42
+    ```
+  </Accordion>
+  
+  <Accordion title="setup.sh - Environment setup" icon="gear">
+    Prepares the repository environment:
+    ```bash
+    #!/bin/bash
+    set -e
+    
+    # Clone repository at specific commit
+    git clone --depth 1 --branch v2.1.0 https://github.com/org/repo
+    cd repo
+    
+    # Install dependencies
+    pip install -e ".[dev]"
+    ```
+  </Accordion>
+  
+  <Accordion title="run_tests.sh - Test execution" icon="play">
+    Executes the test suite for verification:
+    ```bash
+    #!/bin/bash
+    cd repo
+    pytest tests/ -v --tb=short
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Feature pairs and task instances
+
+Each base task contains multiple features. The benchmark evaluates all possible feature pairs:
+
+<Info>
+**Example**: A task with 5 features generates C(5,2) = 10 unique task instances, each testing a different pair of features.
+</Info>
+
+This approach:
+- Tests various conflict patterns
+- Increases dataset diversity
+- Provides multiple difficulty levels per repository
+
+```python
+from itertools import combinations
+
+# Task with features [1, 2, 3, 4, 5]
+features = [1, 2, 3, 4, 5]
+
+# Generate all pairs
+pairs = list(combinations(features, 2))
+# [(1,2), (1,3), (1,4), (1,5), (2,3), (2,4), (2,5), (3,4), (3,5), (4,5)]
+
+# Each pair is a separate task instance
+```
+
+## Dataset subsets
+
+CooperBench provides curated subsets for faster iteration:
+
+<Tabs>
+  <Tab title="Flash (dev)">
+    **20 tasks, 50 feature pairs** across 11 repositories
+    
+    - Designed for rapid development and debugging
+    - Sampled uniformly from the lite subset
+    - Fixed seed (42) for reproducibility
+    
+    ```bash
+    cooperbench run -n dev-test --subset flash
+    ```
+  </Tab>
+  
+  <Tab title="Lite (quick eval)">
+    **26 tasks, 100 feature pairs** across 12 repositories
+    
+    - Balanced evaluation across all repositories
+    - Representative sample of full dataset
+    - Good for quick experiments and comparisons
+    
+    ```bash
+    cooperbench run -n experiment --subset lite
+    ```
+  </Tab>
+  
+  <Tab title="Full (complete)">
+    **30 tasks, 652 feature pairs** across 12 repositories
+    
+    - Complete benchmark coverage
+    - Comprehensive evaluation
+    - Use for final results and leaderboard submissions
+    
+    ```bash
+    cooperbench run -n full-eval
+    ```
+  </Tab>
+</Tabs>
+
+### Subset generation
+
+Subsets use uniform pair-level sampling to ensure diversity:
+
+```python
+import random
+from itertools import combinations
+
+random.seed(42)  # Fixed for reproducibility
+
+# Generate all possible feature pairs
+all_pairs = []
+for task in all_tasks:
+    for f1, f2 in combinations(task.features, 2):
+        all_pairs.append((task.repo, task.task_id, [f1, f2]))
+
+# Sample uniformly
+sampled_pairs = random.sample(all_pairs, 100)
+```
+
+Subset files specify exact feature pairs:
+
+```json
+{
+  "repo": "pallets_jinja_task",
+  "task_id": 1621,
+  "pairs": [[1, 6], [2, 9], [3, 4]]
+}
+```
+
+## Task difficulty and characteristics
+
+Tasks vary across multiple dimensions:
+
+<CardGroup cols={2}>
+  <Card title="Code complexity" icon="brain">
+    - Lines of code changed
+    - Number of files modified
+    - Depth of call chains
+  </Card>
+  
+  <Card title="Feature independence" icon="arrows-split-up-and-left">
+    - Shared vs. separate files
+    - Overlapping vs. distinct modules
+    - Semantic dependencies
+  </Card>
+  
+  <Card title="Test coverage" icon="check-double">
+    - Number of test cases
+    - Integration vs. unit tests
+    - Edge case coverage
+  </Card>
+  
+  <Card title="Domain knowledge" icon="book">
+    - Framework-specific APIs
+    - Language idioms
+    - Architectural patterns
+  </Card>
+</CardGroup>
+
+## Accessing task data
+
+You can programmatically access task information:
+
+```python
+from pathlib import Path
+
+# Read feature description
+task_dir = Path("dataset/llama_index_task/task123")
+feature_desc = (task_dir / "feature1/feature.md").read_text()
+
+# Load patches
+impl_patch = (task_dir / "feature1/feature.patch").read_text()
+test_patch = (task_dir / "feature1/tests.patch").read_text()
+
+# Check available features
+features = sorted([int(f.name.replace("feature", "")) 
+                   for f in task_dir.glob("feature*")])
+print(f"Task has {len(features)} features")
+```
+
+## What's next?
+
+<CardGroup cols={2}>
+  <Card title="Run tasks" icon="play" href="/quickstart">
+    Execute benchmark tasks with your agents
+  </Card>
+  
+  <Card title="Understand settings" icon="sliders" href="/concepts/settings">
+    Learn about cooperative vs solo evaluation modes
+  </Card>
+  
+  <Card title="System architecture" icon="diagram-project" href="/concepts/architecture">
+    Explore how tasks are executed and evaluated
+  </Card>
+  
+  <Card title="CLI reference" icon="terminal" href="/cli-reference">
+    Complete command-line interface documentation
+  </Card>
+</CardGroup>

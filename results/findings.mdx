@@ -1,0 +1,228 @@
+---
+title: Key findings
+description: Discover the three critical coordination failures revealed by CooperBench's evaluation of AI agent collaboration
+---
+
+CooperBench reveals that **coordinating agents perform much worse than a single agent** given the same total workload. This coordination deficit presents a fundamental barrier to deploying AI systems that can work alongside humans or other agents.
+
+## Overview
+
+Through extensive evaluation across 652 tasks spanning 12 real-world repositories, CooperBench identifies three major findings about AI agent coordination:
+
+<CardGroup cols={3}>
+  <Card title="Coordination deficit" icon="users-slash">
+    Two-agent cooperation achieves only **25% success** — roughly 50% lower than solo agents
+  </Card>
+  <Card title="Communication overhead" icon="message-dots">
+    Agents spend up to **20% of budget** on messages that reduce conflicts but not failures
+  </Card>
+  <Card title="Three capability gaps" icon="triangle-exclamation">
+    Failures stem from expectation (42%), communication (26%), and commitment (32%) breakdowns
+  </Card>
+</CardGroup>
+
+## Finding 1: Coordination deficit
+
+**Agents perform worse together than alone** — GPT-5 and Claude Sonnet 4.5 achieve only 25% success with two-agent cooperation, roughly 50% lower than when a single agent handles both tasks.
+
+<Note>
+  This finding holds across both frontier models tested (GPT-5 and Claude Sonnet 4.5), suggesting the coordination deficit is a fundamental limitation rather than a model-specific weakness.
+</Note>
+
+### Why this matters
+
+The coordination deficit reveals a critical gap between agent capabilities and coordination requirements:
+
+- **Solo performance**: Single agents can successfully implement features when given the full context
+- **Cooperative performance**: The same models fail when required to coordinate with a partner agent
+- **Performance gap**: Success rates drop by approximately 50% in cooperative settings
+
+### Implications
+
+This finding suggests that:
+
+1. **Scaling through parallelization has limits** — simply adding more agents may decrease overall success
+2. **Coordination is a distinct capability** — it's not automatically gained from general coding ability
+3. **Current approaches need rethinking** — new mechanisms are needed to enable effective multi-agent collaboration
+
+## Finding 2: Communication reduces conflicts but not failures
+
+**Communication overhead is substantial but ineffective** — Agents spend up to 20% of their token budget on inter-agent communication. While this reduces merge conflicts, it does not improve overall success rates.
+
+<Accordion title="Detailed breakdown of communication patterns">
+  Analysis of agent conversations reveals:
+  
+  - **Volume**: Agents exchange 10-30 messages per task on average
+  - **Budget impact**: Communication consumes 15-20% of total token usage
+  - **Merge conflicts**: Reduced by ~30% when messaging is enabled
+  - **Success rate**: No significant improvement in feature completion
+  
+  This suggests agents can coordinate on file-level conflicts but fail to align on semantic requirements.
+</Accordion>
+
+### Communication analysis
+
+The communication overhead manifests in several ways:
+
+**Token budget allocation**:
+- Baseline (solo): 100% of budget spent on implementation
+- Cooperative: 80% implementation, 20% communication
+- Net effect: Less budget available per agent for actual work
+
+**Conflict reduction vs. success**:
+- Merge conflicts decrease with messaging enabled
+- Test pass rates remain unchanged
+- Conclusion: Agents coordinate on syntax but miss semantics
+
+### Key insight
+
+<Warning>
+  Current communication mechanisms allow agents to avoid stepping on each other's toes (file conflicts) but don't enable them to work toward shared goals (semantic alignment).
+</Warning>
+
+Agents need better mechanisms for:
+- Sharing semantic intent, not just file changes
+- Validating mutual understanding
+- Coordinating on cross-cutting concerns
+
+## Finding 3: Three capability gaps underlie coordination failures
+
+Analysis of 200+ failed cooperative attempts reveals three distinct failure modes:
+
+<CardGroup cols={3}>
+  <Card title="Expectation failures" icon="thought-bubble">
+    **42% of failures**
+    
+    Agents fail to integrate partner state information into their own work
+  </Card>
+  <Card title="Communication failures" icon="comment-slash">
+    **26% of failures**
+    
+    Questions go unanswered, breaking decision loops
+  </Card>
+  <Card title="Commitment failures" icon="handshake-slash">
+    **32% of failures**
+    
+    Agents break promises or make unverifiable claims
+  </Card>
+</CardGroup>
+
+### Expectation failures (42%)
+
+Agents fail to correctly model and integrate their partner's state and changes.
+
+**Example scenario**:
+1. Agent A implements a new function `process_data()`
+2. Agent A tells Agent B: "I added `process_data()` to utils.py"
+3. Agent B implements a caller but:
+   - Assumes wrong function signature
+   - Doesn't verify the actual implementation
+   - Creates incompatible interface
+
+**Root cause**: Agents lack mechanisms to:
+- Query partner's actual state
+- Verify assumptions about partner's changes
+- Detect incompatibilities before committing
+
+### Communication failures (26%)
+
+Agents send questions that go unanswered, leading to incorrect assumptions.
+
+**Example scenario**:
+1. Agent A: "Should I use the new or old API format?"
+2. Agent B: *[continues working without responding]*
+3. Agent A: *[assumes old format, creates incompatibility]*
+
+**Root cause**: 
+- No enforcement of message responses
+- Agents prioritize task completion over coordination
+- Missing protocols for required vs. optional communication
+
+<Note>
+  This finding suggests that **asynchronous communication alone is insufficient** — agents need synchronous checkpoints or enforced response protocols for critical decisions.
+</Note>
+
+### Commitment failures (32%)
+
+Agents break promises or make claims that can't be verified.
+
+**Example scenario**:
+1. Agent A: "I'll add error handling to all edge cases"
+2. Agent B: *[builds on this assumption]*
+3. Agent A: *[implements only partial error handling]*
+4. Result: Agent B's code fails on unhandled errors
+
+**Root cause**:
+- No verification of agent commitments
+- Vague promises that can't be tested
+- Missing accountability mechanisms
+
+## Synthesis: What this means for AI collaboration
+
+These three findings reveal fundamental gaps in current AI agents' ability to collaborate:
+
+<AccordionGroup>
+  <Accordion title="Current state: Agents can code but can't coordinate">
+    Modern AI agents demonstrate strong individual coding capabilities:
+    - Understanding requirements
+    - Writing correct implementations
+    - Running tests and debugging
+    
+    But they struggle with coordination tasks:
+    - Modeling partner state
+    - Maintaining semantic alignment
+    - Verifying shared assumptions
+  </Accordion>
+  
+  <Accordion title="The coordination deficit is not about conflicts">
+    Initial hypotheses suggested coordination failures stemmed from file conflicts or merge issues. The data shows otherwise:
+    
+    - Messaging reduces conflicts by 30%
+    - Success rates remain unchanged
+    - Failures occur even with clean merges
+    
+    The real issue is **semantic misalignment**, not syntactic conflicts.
+  </Accordion>
+  
+  <Accordion title="Communication alone is insufficient">
+    Simply enabling agents to message each other doesn't solve coordination:
+    
+    - 20% of budget spent on communication
+    - High message volume (10-30 per task)
+    - But no improvement in success
+    
+    Better communication *protocols* are needed, not just communication *channels*.
+  </Accordion>
+  
+  <Accordion title="Three distinct failure modes require different solutions">
+    Each capability gap needs specific interventions:
+    
+    **For expectation failures**:
+    - Shared state representation
+    - Assumption verification protocols
+    - Integration testing before commit
+    
+    **For communication failures**:
+    - Required response mechanisms
+    - Synchronous checkpoints
+    - Priority-based message queues
+    
+    **For commitment failures**:
+    - Testable commitment specifications
+    - Automated verification
+    - Accountability tracking
+  </Accordion>
+</AccordionGroup>
+
+## Future directions
+
+These findings point to several research directions:
+
+1. **Coordination-aware training**: Models trained explicitly on multi-agent scenarios
+2. **Formal protocols**: Structured communication with enforced semantics
+3. **Shared representations**: Better state modeling and assumption tracking
+4. **Verification mechanisms**: Automated checks for commitments and compatibility
+
+<Card title="Read the full paper" icon="file-lines" href="https://arxiv.org/abs/2601.13295">
+  For detailed analysis, evaluation methodology, and complete results, see our arXiv paper: "CooperBench: Why Coding Agents Cannot be Your Teammates Yet"
+</Card>

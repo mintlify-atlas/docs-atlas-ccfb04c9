@@ -1,0 +1,364 @@
+---
+title: Execution backends
+description: Configure and use different execution backends for running tasks and evaluations
+---
+
+CooperBench supports three execution backends for running agent tasks and evaluations in isolated environments.
+
+## Overview
+
+Backends determine where agent tasks and test evaluations run:
+
+- **Modal** - Cloud execution (default, easiest)
+- **Docker** - Local containers (no cloud account needed)
+- **GCP** - Google Cloud Platform VMs (scalable, custom infrastructure)
+
+## Selecting a backend
+
+Use the `--backend` flag with `run` or `eval` commands:
+
+```bash
+cooperbench run --backend modal
+cooperbench run --backend docker
+cooperbench run --backend gcp
+```
+
+```bash
+cooperbench eval -n my-experiment --backend modal
+cooperbench eval -n my-experiment --backend docker  
+cooperbench eval -n my-experiment --backend gcp
+```
+
+## Modal (default)
+
+### Overview
+
+Modal is a serverless cloud platform that runs tasks in ephemeral containers.
+
+**Pros:**
+- No setup required
+- Scales automatically
+- Fast cold starts
+- Pay only for usage
+
+**Cons:**
+- Requires Modal account
+- Internet connection required
+- Costs money (free tier available)
+
+### Setup
+
+1. **Create Modal account:**
+
+   Visit [modal.com](https://modal.com) and sign up.
+
+2. **Install Modal:**
+
+   ```bash
+   pip install modal
+   ```
+
+3. **Authenticate:**
+
+   ```bash
+   modal token new
+   ```
+
+   This opens your browser to authenticate.
+
+4. **Run tasks:**
+
+   ```bash
+   cooperbench run --backend modal
+   ```
+
+### Configuration
+
+No additional configuration needed. Modal authenticates via `~/.modal.toml`.
+
+### Example usage
+
+```bash
+# Run benchmark on Modal
+cooperbench run -s lite --backend modal
+
+# Evaluate on Modal
+cooperbench eval -n my-experiment --backend modal
+
+# High concurrency (Modal scales automatically)
+cooperbench run -c 100 --backend modal
+```
+
+## Docker (local)
+
+### Overview
+
+Docker backend runs tasks in local containers using your machine's resources.
+
+**Pros:**
+- No cloud account needed
+- Works offline
+- No usage costs
+- Full control
+
+**Cons:**
+- Limited by local resources
+- Must have Docker installed
+- Slower than cloud for large workloads
+
+### Setup
+
+1. **Install Docker:**
+
+   <CodeGroup>
+
+   ```bash macOS
+   brew install --cask docker
+   ```
+
+   ```bash Linux
+   curl -fsSL https://get.docker.com -o get-docker.sh
+   sh get-docker.sh
+   ```
+
+   ```bash Windows
+   # Download from https://www.docker.com/products/docker-desktop
+   ```
+
+   </CodeGroup>
+
+2. **Start Docker daemon:**
+
+   Make sure Docker Desktop is running, or:
+
+   ```bash
+   sudo systemctl start docker
+   ```
+
+3. **Verify installation:**
+
+   ```bash
+   docker --version
+   docker ps
+   ```
+
+4. **Run tasks:**
+
+   ```bash
+   cooperbench run --backend docker
+   ```
+
+### Configuration
+
+Optional environment variable:
+
+```bash
+export MSWEA_DOCKER_EXECUTABLE=docker  # Default
+```
+
+For Podman or other Docker-compatible tools:
+
+```bash
+export MSWEA_DOCKER_EXECUTABLE=podman
+```
+
+### Example usage
+
+```bash
+# Run benchmark locally
+cooperbench run -s lite --backend docker
+
+# Evaluate locally
+cooperbench eval -n my-experiment --backend docker
+
+# Lower concurrency for local resources
+cooperbench run -c 5 --backend docker
+```
+
+### Performance tips
+
+- **Limit concurrency:** Use `-c 2` or `-c 5` to avoid overwhelming your machine
+- **Increase Docker resources:** In Docker Desktop, allocate more CPUs/memory
+- **Clean up containers:** Run `docker system prune` periodically
+
+## GCP (Google Cloud Platform)
+
+### Overview
+
+GCP backend runs tasks on Google Cloud VMs using Cloud Batch.
+
+**Pros:**
+- Highly scalable
+- Custom machine types
+- Integrate with GCP infrastructure
+- More control than Modal
+
+**Cons:**
+- Requires GCP account and billing
+- More complex setup
+- Need to manage quotas and resources
+
+### Setup
+
+1. **Run configuration wizard:**
+
+   ```bash
+   cooperbench config gcp
+   ```
+
+   This interactive wizard:
+   - Checks for `gcloud` CLI
+   - Authenticates with GCP
+   - Configures project, region, zone
+   - Validates API access
+
+   See [cooperbench config](/cli/config) for details.
+
+2. **Enable required APIs:**
+
+   The following APIs must be enabled in your GCP project:
+
+   - [Compute Engine API](https://console.cloud.google.com/apis/library/compute.googleapis.com)
+   - [Cloud Batch API](https://console.cloud.google.com/apis/library/batch.googleapis.com)
+   - [Cloud Storage API](https://console.cloud.google.com/apis/library/storage.googleapis.com)
+
+3. **Set up billing:**
+
+   Ensure your project has [billing enabled](https://console.cloud.google.com/billing).
+
+4. **Run tasks:**
+
+   ```bash
+   cooperbench run --backend gcp
+   ```
+
+### Configuration
+
+Configuration is stored in `~/.config/cooperbench/config.json`:
+
+```json
+{
+  "gcp_project_id": "my-project-123",
+  "gcp_region": "us-central1",
+  "gcp_zone": "us-central1-a",
+  "gcp_bucket": "cooperbench-eval-my-project-123"
+}
+```
+
+You can also override with environment variables:
+
+```bash
+export GOOGLE_CLOUD_PROJECT=my-project-123
+```
+
+### Example usage
+
+```bash
+# Run benchmark on GCP
+cooperbench run -s lite --backend gcp
+
+# Evaluate on GCP Batch
+cooperbench eval -n my-experiment --backend gcp
+
+# High concurrency (GCP scales well)
+cooperbench run -c 100 --backend gcp
+```
+
+### Performance tips
+
+- **Choose optimal region:** Use regions close to your location or data
+- **Check quotas:** GCP has default quotas; request increases if needed
+- **Monitor costs:** Use [GCP billing console](https://console.cloud.google.com/billing) to track spending
+
+## Choosing a backend
+
+| Factor | Modal | Docker | GCP |
+|--------|-------|--------|-----|
+| Setup complexity | Easy | Easy | Medium |
+| Cost | Pay-per-use | Free | Pay-per-use |
+| Scalability | High | Low | High |
+| Internet required | Yes | No | Yes |
+| Requires account | Yes | No | Yes |
+| Best for | Quick experiments | Local dev/testing | Production workloads |
+
+### Recommendations
+
+**For quick experiments:**
+Use **Modal**. Minimal setup, fast, scales automatically.
+
+```bash
+cooperbench run --backend modal
+```
+
+**For local development:**
+Use **Docker**. No cloud needed, works offline.
+
+```bash
+cooperbench run -c 5 --backend docker
+```
+
+**For production or large-scale experiments:**
+Use **GCP**. More control, integrate with existing infrastructure.
+
+```bash
+cooperbench run -c 100 --backend gcp
+```
+
+## Backend-specific features
+
+### Modal
+
+- Automatic retries on failure
+- Distributed tracing in Modal dashboard
+- GPU support (if configured)
+
+### Docker
+
+- Use custom Docker images
+- Mount local volumes for debugging
+- Offline operation
+
+### GCP
+
+- Custom machine types
+- Persistent disk support
+- VPC networking
+- Integrate with Cloud Storage, BigQuery, etc.
+
+## Troubleshooting
+
+### Modal issues
+
+**"Not authenticated":**
+```bash
+modal token new
+```
+
+**"Rate limited":**
+Reduce concurrency with `-c` flag.
+
+### Docker issues
+
+**"Cannot connect to Docker daemon":**
+```bash
+sudo systemctl start docker  # Linux
+# Or start Docker Desktop manually
+```
+
+**"Out of disk space":**
+```bash
+docker system prune -a
+```
+
+### GCP issues
+
+**"API not enabled":**
+Enable required APIs in [GCP Console](https://console.cloud.google.com/apis/library).
+
+**"Insufficient quota":**
+Request quota increase in [GCP Console](https://console.cloud.google.com/iam-admin/quotas).
+
+**"Authentication failed":**
+```bash
+gcloud auth application-default login
+```

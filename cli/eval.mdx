@@ -1,0 +1,276 @@
+---
+title: cooperbench eval
+description: Evaluate completed benchmark runs
+---
+
+The `cooperbench eval` command evaluates agent runs by executing test suites in isolated sandboxes and computing success metrics.
+
+## Usage
+
+```bash
+cooperbench eval -n <experiment_name> [options]
+```
+
+## Basic examples
+
+### Evaluate an experiment
+
+```bash
+cooperbench eval -n my-experiment
+```
+
+Evaluates all tasks in the `logs/my-experiment/` directory.
+
+### Force re-evaluation
+
+```bash
+cooperbench eval -n my-experiment --force
+```
+
+Re-evaluates even if `eval.json` already exists.
+
+### Evaluate specific tasks
+
+```bash
+cooperbench eval -n my-experiment -t 8394
+```
+
+Evaluates only task 8394.
+
+## Parameters
+
+### Required
+
+<ParamField path="-n, --name" type="string" required>
+  Experiment name to evaluate. Must match a directory in `logs/`.
+  
+  **Example:** `my-experiment` (evaluates `logs/my-experiment/`)
+</ParamField>
+
+### Task filtering
+
+<ParamField path="-s, --subset" type="string">
+  Use a predefined task subset.
+  
+  **Example:** `lite`
+</ParamField>
+
+<ParamField path="-r, --repo" type="string">
+  Filter by repository name.
+  
+  **Example:** `llama_index_task`
+</ParamField>
+
+<ParamField path="-t, --task" type="integer">
+  Filter by specific task ID.
+  
+  **Example:** `8394`
+</ParamField>
+
+<ParamField path="-f, --features" type="string">
+  Specific feature pair to evaluate, comma-separated.
+  
+  **Example:** `1,2`
+</ParamField>
+
+### Execution
+
+<ParamField path="-c, --concurrency" type="integer" default="10">
+  Number of parallel evaluations.
+  
+  **Default:** 10
+</ParamField>
+
+<ParamField path="--backend" type="choice" default="modal">
+  Execution backend for running test suites.
+  
+  **Options:**
+  - `modal` - Modal cloud platform (default)
+  - `docker` - Local Docker containers
+  - `gcp` - Google Cloud Platform Batch jobs
+</ParamField>
+
+<ParamField path="--force" type="flag">
+  Force re-evaluation even if `eval.json` exists.
+</ParamField>
+
+## How evaluation works
+
+For each task instance:
+
+1. **Load agent patches** - Reads `patch.diff` from agent logs
+2. **Create sandbox** - Spins up isolated container with repository
+3. **Apply patches** - Applies agent changes to codebase
+4. **Run tests** - Executes test suite defined in task metadata
+5. **Compute results** - Records pass/fail for each test
+6. **Save results** - Writes `eval.json` with test outcomes
+
+## Evaluation output
+
+Results are saved to:
+
+```
+logs/{experiment_name}/task_{id}_feature_{f1}_{f2}/eval.json
+```
+
+### Example eval.json
+
+```json
+{
+  "task_id": 8394,
+  "features": [1, 2],
+  "tests_passed": 12,
+  "tests_failed": 2,
+  "tests_total": 14,
+  "success": false,
+  "test_results": [
+    {
+      "test_name": "test_feature_1",
+      "status": "passed",
+      "duration": 0.45
+    },
+    {
+      "test_name": "test_feature_2",
+      "status": "failed",
+      "error": "AssertionError: expected 42, got 41"
+    }
+  ],
+  "duration_seconds": 125.3
+}
+```
+
+## Filtering examples
+
+### Evaluate specific subset
+
+```bash
+cooperbench eval -n exp-123 -s lite
+```
+
+Only evaluates tasks in the lite subset.
+
+### Evaluate specific repository
+
+```bash
+cooperbench eval -n exp-123 -r dspy_task
+```
+
+### Evaluate specific task
+
+```bash
+cooperbench eval -n exp-123 -t 8394
+```
+
+### Evaluate specific feature pair
+
+```bash
+cooperbench eval -n exp-123 -t 8394 -f 1,2
+```
+
+Evaluates only features 1 and 2 of task 8394.
+
+### Combine filters
+
+```bash
+cooperbench eval -n exp-123 -s lite -r llama_index_task
+```
+
+## Backend examples
+
+### Evaluate on Modal (cloud)
+
+```bash
+cooperbench eval -n my-experiment --backend modal
+```
+
+Default. Runs evaluation sandboxes on Modal.
+
+### Evaluate locally with Docker
+
+```bash
+cooperbench eval -n my-experiment --backend docker
+```
+
+Runs evaluation in local Docker containers. Requires Docker installed.
+
+### Evaluate on GCP Batch
+
+```bash
+cooperbench eval -n my-experiment --backend gcp
+```
+
+Runs evaluation on GCP Batch jobs. Requires `cooperbench config gcp` first.
+
+## Performance tuning
+
+### High concurrency for cloud
+
+```bash
+cooperbench eval -n my-experiment -c 50 --backend modal
+```
+
+Runs 50 evaluations in parallel on Modal.
+
+### Low concurrency for local
+
+```bash
+cooperbench eval -n my-experiment -c 2 --backend docker
+```
+
+Runs only 2 evaluations in parallel locally to avoid resource exhaustion.
+
+## Skip auto-evaluation
+
+By default, `cooperbench run` automatically evaluates after completion. To disable:
+
+```bash
+cooperbench run --no-auto-eval
+```
+
+Then evaluate manually later:
+
+```bash
+cooperbench eval -n <experiment_name>
+```
+
+## Incremental evaluation
+
+Evaluation skips tasks that already have `eval.json`:
+
+```bash
+cooperbench eval -n my-experiment
+```
+
+To force re-evaluation:
+
+```bash
+cooperbench eval -n my-experiment --force
+```
+
+## Aggregate results
+
+After evaluation, you can aggregate results across all tasks:
+
+```bash
+ls logs/my-experiment/*/eval.json | xargs jq '.success' | grep -c true
+```
+
+Or use Python:
+
+```python
+import json
+from pathlib import Path
+
+exp_dir = Path("logs/my-experiment")
+successes = 0
+total = 0
+
+for eval_file in exp_dir.glob("*/eval.json"):
+    with open(eval_file) as f:
+        result = json.load(f)
+        total += 1
+        if result["success"]:
+            successes += 1
+
+print(f"Success rate: {successes}/{total} ({100*successes/total:.1f}%)")
+```

@@ -1,0 +1,327 @@
+---
+title: cooperbench run
+description: Run agents on CooperBench tasks
+---
+
+The `cooperbench run` command executes agents on benchmark tasks. It supports both cooperative (multi-agent) and solo (single-agent) settings.
+
+## Usage
+
+```bash
+cooperbench run [options]
+```
+
+## Basic examples
+
+### Run with auto-generated name
+
+```bash
+cooperbench run --setting solo -s lite
+```
+
+Auto-generates name like: `solo-msa-gemini-3-flash-lite`
+
+### Run with custom name
+
+```bash
+cooperbench run -n my-experiment --setting solo -r llama_index_task
+```
+
+Runs experiment named `my-experiment` on llama_index repository tasks.
+
+### Multi-agent cooperative setting
+
+```bash
+cooperbench run -n team-experiment --setting coop -s lite --git
+```
+
+Runs two agents cooperatively with git collaboration enabled.
+
+## Parameters
+
+### Experiment identification
+
+<ParamField path="-n, --name" type="string">
+  Experiment name. If not provided, auto-generated from settings.
+  
+  **Format:** `{setting}-{agent}-{model}-{subset}-{repo}-{task}`
+  
+  **Examples:** `solo-msa-gemini-3-flash`, `coop-sw-git-gpt-4o-lite`
+</ParamField>
+
+### Task filtering
+
+<ParamField path="-s, --subset" type="string">
+  Use a predefined task subset. See `dataset/subsets/` for available subsets.
+  
+  **Common values:** `lite`, `full`
+</ParamField>
+
+<ParamField path="-r, --repo" type="string">
+  Filter by repository name.
+  
+  **Example:** `llama_index_task`, `dspy_task`
+</ParamField>
+
+<ParamField path="-t, --task" type="integer">
+  Filter by specific task ID.
+  
+  **Example:** `8394`, `1234`
+</ParamField>
+
+<ParamField path="-f, --features" type="string">
+  Specific feature pair to run, comma-separated.
+  
+  **Example:** `1,2` (runs features 1 and 2)
+</ParamField>
+
+### Model and agent
+
+<ParamField path="-m, --model" type="string" default="vertex_ai/gemini-3-flash-preview">
+  LLM model to use. Supports any LiteLLM-compatible model string.
+  
+  **Examples:**
+  - `vertex_ai/gemini-3-flash-preview`
+  - `gpt-4o`
+  - `claude-3-5-sonnet-20241022`
+  - `anthropic/claude-opus-4-20250514`
+</ParamField>
+
+<ParamField path="-a, --agent" type="string" default="mini_swe_agent">
+  Agent framework to use.
+  
+  **Options:**
+  - `mini_swe_agent` - Lightweight SWE-agent (default)
+  - `swe_agent` - Full SWE-agent
+  - `openhands` - OpenHands agent
+  - Custom agents via `COOPERBENCH_EXTERNAL_AGENTS` environment variable
+</ParamField>
+
+<ParamField path="--agent-config" type="string">
+  Path to agent-specific configuration file. Format depends on the agent.
+  
+  **Example:** `--agent-config configs/custom.yaml`
+  
+  See [Agent configuration](/cli/agent-config) for details.
+</ParamField>
+
+### Execution settings
+
+<ParamField path="--setting" type="choice" default="coop">
+  Benchmark setting.
+  
+  **Options:**
+  - `coop` - Two agents working cooperatively (default)
+  - `solo` - Single agent working alone
+</ParamField>
+
+<ParamField path="-c, --concurrency" type="integer" default="30">
+  Number of parallel tasks to run.
+  
+  **Default:** 30
+</ParamField>
+
+<ParamField path="--backend" type="choice" default="modal">
+  Execution backend.
+  
+  **Options:**
+  - `modal` - Modal cloud platform (default)
+  - `docker` - Local Docker containers
+  - `gcp` - Google Cloud Platform VMs
+  
+  See [Backends](/cli/backends) for configuration details.
+</ParamField>
+
+### Collaboration features
+
+<ParamField path="--redis" type="string" default="redis://localhost:6379">
+  Redis URL for inter-agent communication in cooperative mode.
+  
+  **Default:** `redis://localhost:6379`
+</ParamField>
+
+<ParamField path="--git" type="flag">
+  Enable git collaboration. Agents can push/pull/merge via shared remote.
+  
+  When enabled, each agent gets their own branch and can share code via a "team" remote.
+</ParamField>
+
+<ParamField path="--no-messaging" type="flag">
+  Disable the `send_message` command for agent communication.
+</ParamField>
+
+### Evaluation
+
+<ParamField path="--no-auto-eval" type="flag">
+  Disable automatic evaluation after task completion.
+  
+  By default, evaluation runs automatically after all tasks finish.
+</ParamField>
+
+<ParamField path="--eval-concurrency" type="integer" default="10">
+  Number of parallel evaluations for auto-eval.
+  
+  **Default:** 10
+</ParamField>
+
+### Other options
+
+<ParamField path="--force" type="flag">
+  Force rerun even if results already exist in `logs/` directory.
+</ParamField>
+
+## Filtering examples
+
+### Run specific subset
+
+```bash
+cooperbench run -s lite
+```
+
+### Run specific repository
+
+```bash
+cooperbench run -r llama_index_task
+```
+
+### Run specific task
+
+```bash
+cooperbench run -t 8394
+```
+
+### Run specific feature pair
+
+```bash
+cooperbench run -t 8394 -f 1,2
+```
+
+Runs task 8394, features 1 and 2 only.
+
+### Combine filters
+
+```bash
+cooperbench run -s lite -r dspy_task --setting solo
+```
+
+Runs lite subset, dspy repository only, solo mode.
+
+## Backend examples
+
+### Run on Modal (cloud)
+
+```bash
+cooperbench run --backend modal
+```
+
+Default cloud execution on Modal.
+
+### Run locally with Docker
+
+```bash
+cooperbench run --backend docker
+```
+
+Runs tasks in local Docker containers.
+
+### Run on GCP
+
+```bash
+cooperbench run --backend gcp
+```
+
+Requires prior configuration with `cooperbench config gcp`.
+
+## Model examples
+
+### OpenAI models
+
+```bash
+cooperbench run -m gpt-4o
+cooperbench run -m gpt-4o-mini
+```
+
+Requires `OPENAI_API_KEY` environment variable.
+
+### Anthropic models
+
+```bash
+cooperbench run -m claude-3-5-sonnet-20241022
+cooperbench run -m anthropic/claude-opus-4-20250514
+```
+
+Requires `ANTHROPIC_API_KEY` environment variable.
+
+### Google models
+
+```bash
+cooperbench run -m vertex_ai/gemini-3-flash-preview
+cooperbench run -m gemini/gemini-pro
+```
+
+Requires `GEMINI_API_KEY` or GCP authentication for Vertex AI.
+
+## Collaborative settings
+
+### Git collaboration
+
+```bash
+cooperbench run --setting coop --git
+```
+
+Enables shared git remote. Agents can:
+- Push to `team` remote: `git push team agent_0`
+- Fetch teammates' work: `git fetch team`
+- View changes: `git log team/agent_1`
+
+### Messaging only
+
+```bash
+cooperbench run --setting coop
+```
+
+Agents use `send_message` command to coordinate.
+
+### No collaboration
+
+```bash
+cooperbench run --setting coop --no-messaging
+```
+
+Agents work independently, merge at the end.
+
+## Output
+
+Results are saved to:
+
+```
+logs/{experiment_name}/
+  task_{task_id}_feature_{f1}_{f2}/
+    agent_0/
+      trajectory.jsonl
+      patch.diff
+    agent_1/
+      trajectory.jsonl  
+      patch.diff
+    eval.json
+```
+
+## Auto-generated names
+
+When `--name` is omitted, names follow this pattern:
+
+```
+{setting}-{agent_short}-{git?}-{model}-{subset?}-{repo?}-{task?}
+```
+
+**Examples:**
+- `solo-msa-gemini-3-flash` - Solo, mini_swe_agent, Gemini 3 Flash
+- `solo-msa-gemini-3-flash-lite` - Same but lite subset
+- `coop-sw-git-gpt-4o-dspy-8394` - Coop, swe_agent, git enabled, GPT-4o, dspy repo, task 8394
+
+**Agent shorthands:**
+- `msa` = mini_swe_agent
+- `sw` = swe_agent
+- `oh` = openhands
+
+See `cooperbench/agents/__init__.py` for full list.

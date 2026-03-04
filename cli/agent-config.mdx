@@ -1,0 +1,362 @@
+---
+title: Agent configuration
+description: Pass custom configuration files to agents
+---
+
+The `--agent-config` flag allows you to provide agent-specific configuration files to customize agent behavior.
+
+## Usage
+
+```bash
+cooperbench run --agent-config <path-to-config>
+```
+
+## Configuration format
+
+Configuration format depends on the agent framework:
+
+- **mini_swe_agent** - YAML format
+- **swe_agent** - YAML format
+- **openhands** - YAML or TOML format
+
+## mini_swe_agent configuration
+
+### Example config
+
+```yaml mini.yaml
+agent:
+  system_template: |
+    You are a helpful assistant that can interact with a computer.
+    {% if agent_id %}
+    You are {{ agent_id }} working as a team with: {{ agents | join(', ') }}.
+    {% endif %}
+    
+    Your response must contain exactly ONE bash code block with ONE command.
+  
+  instance_template: |
+    Please solve this issue: {{task}}
+    
+    You can execute bash commands and edit files.
+  
+  step_limit: 100
+  cost_limit: 1.0
+  mode: confirm
+
+environment:
+  env:
+    PAGER: cat
+    MANPAGER: cat
+```
+
+### Key fields
+
+- **system_template** - System prompt for the agent (supports Jinja2 templates)
+- **instance_template** - Task-specific instructions (supports Jinja2 templates)
+- **step_limit** - Maximum number of agent turns (default: 100)
+- **cost_limit** - Maximum cost in USD (default: 1.0)
+- **mode** - Execution mode (`confirm`, `auto`)
+
+### Template variables
+
+Available in Jinja2 templates:
+
+- `{{task}}` - Task description
+- `{{agent_id}}` - Agent identifier (e.g., `agent_0`)
+- `{{agents}}` - List of all agent IDs
+- `{{git_enabled}}` - Whether git collaboration is enabled
+- `{{messaging_enabled}}` - Whether messaging is enabled
+- `{{system}}`, `{{release}}`, `{{version}}`, `{{machine}}` - System info
+
+### Example usage
+
+```bash
+cooperbench run \
+  --agent mini_swe_agent \
+  --agent-config configs/mini.yaml
+```
+
+## swe_agent configuration
+
+### Example config
+
+```yaml coop.yaml
+agent:
+  templates:
+    system_template: |-
+      You are a helpful assistant that can interact with a computer to solve tasks.
+      {% if agent_id and agents|length > 1 %}
+      You are {{ agent_id }} working as a team with: {{ agents | join(', ') }}.
+      {% endif %}
+    
+    instance_template: |-
+      I've uploaded a python code repository in the directory {{working_dir}}.
+      
+      <pr_description>
+      {{problem_statement}}
+      </pr_description>
+      
+      Please implement the necessary changes.
+  
+  tools:
+    env_variables:
+      PAGER: cat
+      MANPAGER: cat
+    bundles:
+      - path: tools/registry
+      - path: tools/edit_anthropic
+      - path: tools/messaging
+    enable_bash_tool: true
+  
+  history_processors:
+    - type: cache_control
+      last_n_messages: 2
+```
+
+### Key fields
+
+- **templates** - Prompt templates (system, instance, observation)
+- **tools** - Tool configuration (bundles, env variables)
+- **history_processors** - Message history processing
+
+### Tool bundles
+
+Available tool bundles:
+
+- `tools/registry` - Core tools (ls, find, grep, etc.)
+- `tools/edit_anthropic` - File editing tools
+- `tools/messaging` - `send_message` command for collaboration
+- `tools/review_on_submit_m` - Code review on submission
+
+### Example usage
+
+```bash
+cooperbench run \
+  --agent swe_agent \
+  --agent-config configs/coop.yaml \
+  --setting coop
+```
+
+## openhands configuration
+
+OpenHands uses YAML or TOML configuration.
+
+### Example config
+
+```yaml openhands.yaml
+agent:
+  name: CodeActAgent
+  max_iterations: 100
+  enable_tools:
+    - terminal
+    - editor
+    - browser
+
+llm:
+  model: gpt-4o
+  temperature: 0.1
+  max_tokens: 4096
+
+security:
+  enable_sandbox: true
+  allow_network: true
+```
+
+### Example usage
+
+```bash
+cooperbench run \
+  --agent openhands \
+  --agent-config configs/openhands.yaml
+```
+
+## Environment-specific configs
+
+### Solo mode config
+
+For single-agent tasks, simplify templates:
+
+```yaml solo.yaml
+agent:
+  system_template: |
+    You are a helpful coding assistant.
+    Solve the task by executing bash commands and editing files.
+  
+  instance_template: |
+    Task: {{task}}
+    
+    Workflow:
+    1. Analyze the codebase
+    2. Reproduce the issue
+    3. Fix the issue
+    4. Verify the fix
+    5. Submit: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
+  
+  step_limit: 50
+```
+
+Usage:
+
+```bash
+cooperbench run --setting solo --agent-config configs/solo.yaml
+```
+
+### Cooperative mode config
+
+For multi-agent tasks, include collaboration instructions:
+
+```yaml coop.yaml
+agent:
+  system_template: |
+    You are {{ agent_id }} working with: {{ agents | join(', ') }}.
+    Each agent has their own workspace.
+    {% if messaging_enabled %}
+    Use send_message <agent_name> "message" to coordinate.
+    {% endif %}
+    {% if git_enabled %}
+    Use shared git remote "team" to share code.
+    {% endif %}
+  
+  instance_template: |
+    Task: {{task}}
+    
+    Collaboration workflow:
+    1. Explore codebase
+    2. Message teammates about which files you'll modify
+    3. Implement your feature
+    4. Push changes and submit
+```
+
+Usage:
+
+```bash
+cooperbench run --setting coop --agent-config configs/coop.yaml --git
+```
+
+## Default configurations
+
+If `--agent-config` is not specified, CooperBench uses built-in defaults:
+
+- **mini_swe_agent**: `src/cooperbench/agents/mini_swe_agent/config/mini.yaml`
+- **swe_agent**: `src/cooperbench/agents/swe_agent/config/coop.yaml`
+- **openhands**: Built-in SDK defaults
+
+## Locating default configs
+
+To see default configs:
+
+```bash
+# mini_swe_agent default
+cat ~/.local/share/uv/cooperbench/agents/mini_swe_agent/config/mini.yaml
+
+# swe_agent default
+cat ~/.local/share/uv/cooperbench/agents/swe_agent/config/coop.yaml
+```
+
+Or from source:
+
+```bash
+cat src/cooperbench/agents/mini_swe_agent/config/mini.yaml
+cat src/cooperbench/agents/swe_agent/config/coop.yaml
+```
+
+## Custom config examples
+
+### Increase step limit
+
+```yaml high-steps.yaml
+agent:
+  system_template: |
+    You are a helpful coding assistant.
+  instance_template: |
+    Task: {{task}}
+  step_limit: 200  # Default is 100
+  cost_limit: 2.0  # Default is 1.0
+```
+
+```bash
+cooperbench run --agent-config high-steps.yaml
+```
+
+### Custom prompts
+
+```yaml custom-prompt.yaml
+agent:
+  system_template: |
+    You are an expert Python developer.
+    Write clean, well-documented code.
+    Always add type hints and docstrings.
+  
+  instance_template: |
+    Task: {{task}}
+    
+    Requirements:
+    - Add comprehensive docstrings
+    - Include type hints
+    - Write unit tests
+    - Follow PEP 8 style
+```
+
+```bash
+cooperbench run --agent-config custom-prompt.yaml
+```
+
+### Disable tools
+
+```yaml minimal-tools.yaml
+agent:
+  tools:
+    env_variables:
+      PAGER: cat
+    bundles:
+      - path: tools/registry  # Core tools only
+    enable_bash_tool: true
+```
+
+```bash
+cooperbench run --agent swe_agent --agent-config minimal-tools.yaml
+```
+
+## Environment variable overrides
+
+Some settings can be overridden with environment variables:
+
+```bash
+# Override config directory
+export MSWEA_CONFIG_DIR=./configs
+cooperbench run --agent-config mini.yaml
+```
+
+See [Environment variables](/cli/environment-variables) for full list.
+
+## Validation
+
+CooperBench validates configs on load. Common errors:
+
+**Invalid YAML syntax:**
+```
+Error: Failed to parse config: mapping values are not allowed here
+```
+
+Fix: Check indentation and syntax.
+
+**Missing required fields:**
+```
+Error: Missing required field: agent.system_template
+```
+
+Fix: Add the required field to your config.
+
+**Invalid template:**
+```
+Error: Jinja2 template error: 'task' is undefined
+```
+
+Fix: Check template variable names match available variables.
+
+## Best practices
+
+1. **Start with defaults:** Copy built-in configs and modify incrementally
+2. **Test locally:** Use `--backend docker -c 1` to test configs quickly
+3. **Version control:** Keep configs in git alongside your experiments
+4. **Document changes:** Add comments explaining custom settings
+5. **Validate templates:** Test Jinja2 templates with sample data before running

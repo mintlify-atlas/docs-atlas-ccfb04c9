@@ -1,0 +1,154 @@
+---
+title: Introduction
+description: CooperBench is the first benchmark designed to measure how well AI agents can cooperate when handling individual tasks with potential conflicts
+---
+
+## What is CooperBench?
+
+CooperBench is a comprehensive benchmark for evaluating multi-agent coordination in collaborative code generation. It measures how well AI agents can work together as teammates when handling individual tasks that may conflict with each other.
+
+<Note>
+While single AI agents can solve increasingly complex programming tasks, coordinating multiple agents presents unique challenges that haven't been systematically measured—until now.
+</Note>
+
+## The coordination deficit problem
+
+Our research reveals a critical finding: **coordinating agents perform much worse than a single agent** given the same total workload. This coordination deficit presents a fundamental barrier to deploying AI systems that can work alongside humans or other agents.
+
+### Key findings
+
+<CardGroup cols={3}>
+  <Card title="Performance gap" icon="chart-line-down">
+    GPT-5 and Claude Sonnet 4.5 achieve only **25% success** with two-agent cooperation—roughly **50% lower** than a single agent handling both tasks
+  </Card>
+  <Card title="Communication cost" icon="comments">
+    Agents spend up to **20% of their budget** on communication, reducing merge conflicts but not improving overall success
+  </Card>
+  <Card title="Capability gaps" icon="triangle-exclamation">
+    Three types of failures underlie coordination problems: expectation (42%), communication (26%), and commitment (32%)
+  </Card>
+</CardGroup>
+
+## Benchmark statistics
+
+CooperBench provides a comprehensive dataset for evaluating agent coordination:
+
+| Metric | Value |
+|--------|-------|
+| **Tasks** | 652 |
+| **Repositories** | 12 |
+| **Languages** | Python, TypeScript, Go, Rust |
+| **Feature pairs** | Multiple per task |
+| **Settings** | Cooperative and solo |
+
+## How it works
+
+<Steps>
+  <Step title="Task assignment">
+    Each task contains two features that need to be implemented in the same codebase. In cooperative mode, two agents each handle one feature. In solo mode, a single agent handles both features sequentially.
+  </Step>
+  
+  <Step title="Agent execution">
+    Agents work in isolated sandboxes with access to the repository, tests, and feature descriptions. In cooperative mode, agents can communicate via Redis messaging and optionally collaborate via Git.
+  </Step>
+  
+  <Step title="Evaluation">
+    Generated patches are tested against golden test suites to measure correctness, conflicts, and integration quality.
+  </Step>
+</Steps>
+
+## Dataset structure
+
+Each task in CooperBench follows a consistent structure:
+
+```
+dataset/
+  <repo_name>/
+    task<id>/
+      setup.sh          # Repository setup script
+      run_tests.sh      # Test runner script
+      feature1/
+        feature.md      # Feature description
+        feature.patch   # Golden implementation
+        tests.patch     # Test cases
+      feature2/
+        feature.md
+        feature.patch
+        tests.patch
+```
+
+<Warning>
+The golden patches and test cases are hidden from agents during execution to ensure fair evaluation.
+</Warning>
+
+## Experiment settings
+
+CooperBench supports two experimental settings:
+
+<AccordionGroup>
+  <Accordion title="Cooperative (coop)" icon="users">
+    Two agents work simultaneously, each implementing one feature. They can:
+    - Send messages via Redis for coordination
+    - Push/pull/merge changes via shared Git remote (optional)
+    - Access the same codebase in isolated sandboxes
+    
+    This setting reveals coordination challenges like merge conflicts, communication failures, and integration issues.
+  </Accordion>
+  
+  <Accordion title="Solo" icon="user">
+    A single agent implements both features sequentially. This provides a baseline for comparing against cooperative performance.
+    
+    Solo agents have the advantage of perfect information about both features but may struggle with context length limitations.
+  </Accordion>
+</AccordionGroup>
+
+## Research paper
+
+CooperBench is based on peer-reviewed research published in 2026:
+
+<Card title="CooperBench: Why Coding Agents Cannot be Your Teammates Yet" icon="file-lines" href="https://arxiv.org/abs/2601.13295">
+  Read the full paper on arXiv to learn about our methodology, experiments, and detailed findings about agent coordination failures.
+</Card>
+
+**Citation:**
+
+```bibtex
+@article{cooperbench2026,
+  title={CooperBench: Why Coding Agents Cannot be Your Teammates Yet},
+  author={Khatua*, Arpandeep and Zhu*, Hao and Tran†, Peter and Prabhudesai†, Arya
+          and Sadrieh†, Frederic and Lieberwirth†, Johann K. and Yu, Xinkai
+          and Fu, Yicheng and Ryan, Michael J. and Pei, Jiaxin and Yang, Diyi},
+  journal={arXiv preprint},
+  year={2026},
+  url={https://arxiv.org/abs/2601.13295},
+  note={*Equal contribution (Stanford) · †Equal contribution (SAP Labs)}
+}
+```
+
+## Links and resources
+
+<CardGroup cols={2}>
+  <Card title="Website" icon="globe" href="https://cooperbench.com">
+    Visit the official CooperBench website
+  </Card>
+  <Card title="Dataset" icon="database" href="https://huggingface.co/datasets/cooperbench/cooperbench">
+    Download the full dataset from HuggingFace
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/cooperbench/CooperBench">
+    Explore the source code and contribute
+  </Card>
+  <Card title="PyPI" icon="python" href="https://pypi.org/project/cooperbench/">
+    Install via pip
+  </Card>
+</CardGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Set up CooperBench with your preferred backend
+  </Card>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Run your first experiment in minutes
+  </Card>
+</CardGroup>

@@ -1,0 +1,398 @@
+---
+title: Installation
+description: Set up CooperBench with your preferred execution backend and configure LLM providers
+---
+
+## Requirements
+
+Before installing CooperBench, ensure you have:
+
+- **Python 3.10+** (Python 3.12+ recommended)
+- **Execution backend** (choose one):
+  - [Modal](https://modal.com) - Cloud-based, easiest to set up (default)
+  - [GCP](https://cloud.google.com) - Google Cloud Platform for scale
+  - Docker - Local execution for development
+- **Redis** - For inter-agent communication in cooperative mode
+- **LLM API keys** - From supported providers (Anthropic, OpenAI, Google Gemini, etc.)
+
+## Basic installation
+
+<CodeGroup>
+
+```bash pip
+pip install cooperbench
+```
+
+```bash development
+# Clone the repository
+git clone https://github.com/cooperbench/CooperBench.git
+cd CooperBench
+
+# Install in editable mode with dev dependencies
+pip install -e ".[dev]"
+```
+
+```bash with GCP
+# Install with GCP backend support
+pip install 'cooperbench[gcp]'
+```
+
+```bash with SWE-agent
+# Install with SWE-agent framework support
+pip install 'cooperbench[swe-agent]'
+```
+
+```bash all extras
+# Install with all optional dependencies
+pip install 'cooperbench[all]'
+```
+
+</CodeGroup>
+
+<Note>
+The basic installation includes Modal as the default execution backend. You can add other backends using optional dependencies.
+</Note>
+
+## Backend setup
+
+Choose one execution backend based on your needs:
+
+<Tabs>
+  <Tab title="Modal (Default)">
+    Modal provides cloud-based sandboxed execution with minimal setup.
+
+    <Steps>
+      <Step title="Create Modal account">
+        Sign up at [modal.com](https://modal.com) and get your API token.
+      </Step>
+
+      <Step title="Authenticate Modal">
+        ```bash
+        modal setup
+        ```
+        Follow the prompts to authenticate with your Modal account.
+      </Step>
+
+      <Step title="Verify installation">
+        ```bash
+        modal --help
+        ```
+        You should see Modal's help output.
+      </Step>
+    </Steps>
+
+    <Tip>
+    Modal is the recommended backend for most users. It handles sandboxing, scaling, and infrastructure automatically.
+    </Tip>
+  </Tab>
+
+  <Tab title="GCP (Recommended for Scale)">
+    Google Cloud Platform provides robust infrastructure for running experiments at scale.
+
+    <Steps>
+      <Step title="Install gcloud CLI">
+        <CodeGroup>
+        ```bash macOS
+        brew install google-cloud-sdk
+        ```
+
+        ```bash Linux
+        curl https://sdk.cloud.google.com | bash
+        exec -l $SHELL  # Restart shell
+        ```
+
+        ```bash Windows
+        # Download installer from:
+        # https://cloud.google.com/sdk/docs/install
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Install GCP dependencies">
+        ```bash
+        pip install 'cooperbench[gcp]'
+        ```
+      </Step>
+
+      <Step title="Run configuration wizard">
+        ```bash
+        cooperbench config gcp
+        ```
+        
+        The wizard will:
+        - Authenticate with your Google account
+        - Set up a GCP project
+        - Enable required APIs (Batch, Compute, Storage)
+        - Configure credentials and permissions
+        - Run validation tests
+
+        <Tip>
+        Use `--skip-tests` flag to skip validation tests for faster setup:
+        ```bash
+        cooperbench config gcp --skip-tests
+        ```
+        </Tip>
+      </Step>
+
+      <Step title="Verify setup">
+        ```bash
+        cooperbench run --backend gcp -s lite --help
+        ```
+      </Step>
+    </Steps>
+
+    <Note>
+    GCP requires a billing account. You'll be charged for VM instances and storage used during experiments. See [GCP pricing](https://cloud.google.com/pricing) for details.
+    </Note>
+  </Tab>
+
+  <Tab title="Docker (Local)">
+    Docker enables local execution for development and testing.
+
+    <Steps>
+      <Step title="Install Docker">
+        Download and install Docker Desktop from [docker.com](https://www.docker.com/products/docker-desktop).
+      </Step>
+
+      <Step title="Start Docker daemon">
+        Ensure Docker is running:
+        ```bash
+        docker --version
+        docker ps
+        ```
+      </Step>
+
+      <Step title="Verify setup">
+        ```bash
+        cooperbench run --backend docker --help
+        ```
+      </Step>
+    </Steps>
+
+    <Warning>
+    Docker backend is intended for local testing only. It may not provide the same isolation guarantees as Modal or GCP.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Redis setup
+
+Redis is required for inter-agent communication in cooperative mode.
+
+<CodeGroup>
+
+```bash Local (Docker)
+# Run Redis in a Docker container
+docker run -d -p 6379:6379 redis:7
+
+# Verify Redis is running
+redis-cli ping
+# Should return: PONG
+```
+
+```bash Local (native)
+# macOS
+brew install redis
+brew services start redis
+
+# Ubuntu/Debian
+sudo apt-get install redis-server
+sudo systemctl start redis
+
+# Verify
+redis-cli ping
+```
+
+```bash Cloud providers
+# Redis Cloud (free tier available)
+# Get connection URL from redis.com/try-free
+
+# AWS ElastiCache
+# Get endpoint from AWS console
+
+# Google Cloud Memorystore
+# Get connection string from GCP console
+```
+
+</CodeGroup>
+
+<Note>
+For solo experiments, Redis is optional. You can skip this step if you only plan to run single-agent experiments.
+</Note>
+
+## LLM API keys
+
+CooperBench supports multiple LLM providers. Configure your API keys in a `.env` file:
+
+<Steps>
+  <Step title="Create .env file">
+    In your project root, create a `.env` file:
+    ```bash
+    touch .env
+    ```
+  </Step>
+
+  <Step title="Add API keys">
+    Add your provider keys to `.env`:
+
+    ```bash .env
+    # Anthropic (Claude models)
+    ANTHROPIC_API_KEY=sk-ant-...
+
+    # OpenAI (GPT models)
+    OPENAI_API_KEY=sk-...
+
+    # Google (Gemini models)
+    GEMINI_API_KEY=...
+
+    # Optional: Other providers
+    COHERE_API_KEY=...
+    TOGETHER_API_KEY=...
+    ```
+  </Step>
+
+  <Step title="Verify configuration">
+    The keys will be automatically loaded when running experiments.
+    ```bash
+    # Test with a small experiment
+    cooperbench run -n test -r llama_index_task -m gpt-4o --setting solo
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Never commit your `.env` file to version control. Add it to `.gitignore`:
+```bash
+echo ".env" >> .gitignore
+```
+</Warning>
+
+## Dataset download
+
+Download the CooperBench dataset from HuggingFace:
+
+```bash
+git clone https://huggingface.co/datasets/cooperbench/cooperbench dataset/
+```
+
+This will create a `dataset/` directory containing all 652 tasks across 12 repositories.
+
+<Accordion title="Dataset structure">
+```
+dataset/
+  llama_index_task/
+    task1/
+      setup.sh
+      run_tests.sh
+      feature1/
+        feature.md
+        feature.patch
+        tests.patch
+      feature2/
+        ...
+    task2/
+      ...
+  dspy_task/
+    ...
+  # ... 12 repositories total
+```
+</Accordion>
+
+## Verify installation
+
+Confirm everything is set up correctly:
+
+```bash
+# Check CooperBench version
+cooperbench --help
+
+# Check Python version
+python --version  # Should be 3.10+
+
+# Check backend
+modal --version  # or docker --version, or gcloud --version
+
+# Check Redis connection
+redis-cli ping  # Should return PONG
+
+# List available tasks
+ls dataset/  # Should show repository directories
+```
+
+<Check>
+If all commands succeed, you're ready to run experiments!
+</Check>
+
+## Optional dependencies
+
+CooperBench provides several optional dependency groups:
+
+| Group | Install | Purpose |
+|-------|---------|----------|
+| `gcp` | `pip install 'cooperbench[gcp]'` | Google Cloud Platform backend |
+| `swe-agent` | `pip install 'cooperbench[swe-agent]'` | SWE-agent framework support |
+| `dev` | `pip install 'cooperbench[dev]'` | Development tools (pytest, mypy, ruff) |
+| `all` | `pip install 'cooperbench[all]'` | All optional dependencies |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Python version errors">
+    CooperBench requires Python 3.10 or higher. Check your version:
+    ```bash
+    python --version
+    ```
+
+    If needed, install a newer Python version:
+    ```bash
+    # Using pyenv
+    pyenv install 3.12
+    pyenv global 3.12
+
+    # Or download from python.org
+    ```
+  </Accordion>
+
+  <Accordion title="Modal authentication fails">
+    If `modal setup` fails:
+    1. Ensure you have a Modal account at [modal.com](https://modal.com)
+    2. Check your internet connection
+    3. Try logging out and back in:
+       ```bash
+       modal config unset token
+       modal setup
+       ```
+  </Accordion>
+
+  <Accordion title="Redis connection errors">
+    If agents can't connect to Redis:
+    1. Verify Redis is running: `redis-cli ping`
+    2. Check the Redis URL in your command:
+       ```bash
+       cooperbench run --redis redis://localhost:6379 ...
+       ```
+    3. For cloud Redis, use the full connection string:
+       ```bash
+       cooperbench run --redis redis://user:pass@host:port ...
+       ```
+  </Accordion>
+
+  <Accordion title="LLM API key errors">
+    If you get authentication errors:
+    1. Verify `.env` file exists and contains keys
+    2. Check key format matches provider requirements
+    3. Test the key directly with the provider's API
+    4. Ensure `.env` is in the working directory where you run commands
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Run your first CooperBench experiment
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/cli/run">
+    Explore all available commands and options
+  </Card>
+</CardGroup>

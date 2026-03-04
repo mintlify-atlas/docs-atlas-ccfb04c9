@@ -1,0 +1,632 @@
+---
+title: Custom agents
+description: Implement your own agent framework to run on CooperBench
+---
+
+CooperBench supports custom agent frameworks through a simple adapter interface. Implement your own agent to evaluate on the benchmark.
+
+## Overview
+
+To add a custom agent:
+
+1. **Implement the `AgentRunner` interface** - Define how your agent executes tasks
+2. **Register your agent** - Use the `@register` decorator to make it available
+3. **Run experiments** - Use `--agent your-agent-name` to run benchmarks
+
+## Agent interface
+
+Custom agents must implement the `AgentRunner` protocol:
+
+```python
+from cooperbench.agents import AgentResult
+
+class AgentRunner:
+    """Protocol for agent framework adapters."""
+
+    def run(
+        self,
+        task: str,
+        image: str,
+        *,
+        agent_id: str = "agent",
+        model_name: str = "gpt-4o",
+        agents: list[str] | None = None,
+        comm_url: str | None = None,
+        git_server_url: str | None = None,
+        git_enabled: bool = False,
+        messaging_enabled: bool = True,
+        config: dict | None = None,
+        agent_config: str | None = None,
+        log_dir: str | None = None,
+    ) -> AgentResult:
+        """Run the agent on a task.
+
+        Args:
+            task: Task description (feature requirements)
+            image: Docker image with repository code
+            agent_id: Unique identifier for this agent instance
+            model_name: LLM model to use
+            agents: List of all agent IDs (for collaboration)
+            comm_url: Redis URL for inter-agent messaging
+            git_server_url: Git server URL for code sharing
+            git_enabled: Whether git collaboration is enabled
+            messaging_enabled: Whether messaging is enabled
+            config: Agent configuration dictionary
+            agent_config: Path to agent config file
+            log_dir: Directory to save logs
+
+        Returns:
+            AgentResult with status, patch, cost, steps, etc.
+        """
+        ...
+```
+
+### AgentResult
+
+Your agent must return an `AgentResult` object:
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class AgentResult:
+    """Result from running an agent on a task."""
+
+    status: str           # "Submitted", "Error", etc.
+    patch: str            # Git diff of changes
+    cost: float           # Total LLM cost in USD
+    steps: int            # Number of agent steps/turns
+    messages: list        # Conversation history
+    error: str | None     # Error message if failed
+```
+
+## Implementing a custom agent
+
+### Basic example
+
+Here's a minimal custom agent:
+
+```python
+from cooperbench.agents import AgentResult
+from cooperbench.agents.registry import register
+
+@register("my_agent")
+class MyAgentRunner:
+    """Custom agent adapter."""
+
+    def run(
+        self,
+        task: str,
+        image: str,
+        *,
+        agent_id: str = "agent",
+        model_name: str = "gpt-4o",
+        **kwargs
+    ) -> AgentResult:
+        """Run custom agent on task."""
+
+        # 1. Create execution environment
+        from cooperbench.agents.mini_swe_agent.environments.modal import ModalEnvironment
+
+        env = ModalEnvironment(
+            image=image,
+            cwd="/workspace/repo",
+            timeout=3600,
+        )
+
+        # 2. Get base commit for patch generation
+        base_commit_result = env.execute("git rev-parse HEAD", timeout=10)
+        base_commit = base_commit_result.get("output", "").strip()
+
+        # 3. Run your agent logic
+        try:
+            # Your agent implementation here
+            # For example:
+            # - Read the task description
+            # - Use LLM to plan changes
+            # - Execute commands in env
+            # - Iterate until task is complete
+
+            status = "Submitted"
+            error = None
+        except Exception as e:
+            status = "Error"
+            error = str(e)
+
+        # 4. Extract patch (diff from base commit)
+        patch_result = env.execute(f"git diff {base_commit}", timeout=30)
+        patch = patch_result.get("output", "").strip()
+
+        # 5. Cleanup
+        env.cleanup()
+
+        # 6. Return result
+        return AgentResult(
+            status=status,
+            patch=patch,
+            cost=0.0,  # Track your LLM costs
+            steps=0,   # Track agent iterations
+            messages=[], # Save conversation history
+            error=error,
+        )
+```
+
+### Complete example (mini-swe-agent)
+
+Here's how the built-in `mini_swe_agent` is implemented:
+
+```python
+# From src/cooperbench/agents/mini_swe_agent/adapter.py
+
+from cooperbench.agents import AgentResult
+from cooperbench.agents.registry import register
+from cooperbench.agents.mini_swe_agent.agents.default import DefaultAgent
+from cooperbench.agents.mini_swe_agent.models.litellm_model import LitellmModel
+from cooperbench.agents.mini_swe_agent.environments.modal import ModalEnvironment
+from cooperbench.agents.mini_swe_agent.connectors.messaging import MessagingConnector
+
+@register("mini_swe_agent")
+class MiniSweAgentRunner:
+    """Adapter for mini-swe-agent framework."""
+
+    def run(
+        self,
+        task: str,
+        image: str,
+        *,
+        agent_id: str = "agent",
+        model_name: str = "gpt-4o",
+        agents: list[str] | None = None,
+        comm_url: str | None = None,
+        messaging_enabled: bool = True,
+        config: dict | None = None,
+        **kwargs
+    ) -> AgentResult:
+        """Run mini-swe-agent on task."""
+
+        # Create sandbox environment
+        env = ModalEnvironment(
+            image=image,
+            cwd="/workspace/repo",
+            timeout=3600,
+        )
+
+        # Capture base commit for patch generation
+        base_commit_result = env.execute("git rev-parse HEAD", timeout=10)
+        base_commit = base_commit_result.get("output", "").strip()
+
+        # Create LLM model
+        model = LitellmModel(model_name=model_name)
+
+        # Setup messaging connector for collaboration
+        comm = None
+        if messaging_enabled and comm_url and agents and len(agents) > 1:
+            comm = MessagingConnector(
+                agent_id=agent_id,
+                agents=agents,
+                url=comm_url
+            )
+
+        # Create agent with template variables
+        agent = DefaultAgent(
+            model=model,
+            env=env,
+            comm=comm,
+            agent_id=agent_id,
+        )
+
+        # Run agent
+        error_msg = None
+        try:
+            status, _ = agent.run(task=task)
+        except Exception as e:
+            status = "Error"
+            error_msg = str(e)
+
+        # Extract patch
+        patch_result = env.execute(f"git diff {base_commit}", timeout=30)
+        patch = patch_result.get("output", "").strip()
+
+        # Cleanup
+        env.cleanup()
+
+        return AgentResult(
+            status=status,
+            patch=patch,
+            cost=model.cost,
+            steps=model.n_calls,
+            messages=agent.messages,
+            error=error_msg,
+        )
+```
+
+## Registering your agent
+
+### Using the decorator
+
+The simplest way is to use the `@register` decorator:
+
+```python
+from cooperbench.agents.registry import register
+
+@register("my_agent")
+class MyAgentRunner:
+    ...
+```
+
+### External registration
+
+For agents in separate packages, use the `COOPERBENCH_EXTERNAL_AGENTS` environment variable:
+
+```bash
+# Point to your agent module
+export COOPERBENCH_EXTERNAL_AGENTS="my_package.agents.adapter"
+
+# Your module should call register() on import
+# my_package/agents/adapter.py:
+from cooperbench.agents.registry import register
+
+@register("my_agent")
+class MyAgentRunner:
+    ...
+```
+
+### Multiple agents
+
+Register multiple agents by separating module paths with commas:
+
+```bash
+export COOPERBENCH_EXTERNAL_AGENTS="package1.agent,package2.agent,package3.agent"
+```
+
+## Running your agent
+
+Once registered, use the `--agent` flag:
+
+```bash
+# Run with your custom agent
+cooperbench run --agent my_agent -s lite
+
+# With custom model
+cooperbench run --agent my_agent -m gpt-4o -s lite
+
+# With agent-specific config
+cooperbench run --agent my_agent --agent-config config/my_agent.yaml -s lite
+```
+
+## Agent configuration
+
+### Config file
+
+Provide agent-specific configuration via `--agent-config`:
+
+```yaml
+# config/my_agent.yaml
+backend: modal
+
+agent:
+  max_iterations: 30
+  temperature: 0.2
+  system_prompt: "You are a software engineer..."
+
+model:
+  max_tokens: 4096
+  top_p: 0.95
+```
+
+Access in your agent:
+
+```python
+def run(self, task: str, image: str, *, config: dict | None = None, **kwargs):
+    if config:
+        max_iterations = config.get("agent", {}).get("max_iterations", 30)
+        temperature = config.get("agent", {}).get("temperature", 0.2)
+    ...
+```
+
+### Config dictionary
+
+Or pass config directly (for programmatic use):
+
+```python
+from cooperbench.runner import run
+
+run(
+    run_name="my-experiment",
+    agent="my_agent",
+    model_name="gpt-4o",
+    config={
+        "agent": {
+            "max_iterations": 30,
+            "temperature": 0.2,
+        }
+    },
+)
+```
+
+## Collaboration features
+
+### Inter-agent messaging
+
+In cooperative mode, agents can send messages via Redis:
+
+```python
+from cooperbench.agents.mini_swe_agent.connectors.messaging import MessagingConnector
+
+def run(self, task, image, *, agents=None, comm_url=None, messaging_enabled=True, **kwargs):
+    if messaging_enabled and comm_url and agents:
+        comm = MessagingConnector(
+            agent_id=agent_id,
+            agents=agents,
+            url=comm_url
+        )
+
+        # Send message to another agent
+        comm.send(to_agent="agent2", message="I'm working on the API layer")
+
+        # Receive messages
+        messages = comm.receive()
+        for msg in messages:
+            print(f"From {msg['from']}: {msg['text']}")
+```
+
+### Git collaboration
+
+Agents can share code via git:
+
+```python
+from cooperbench.agents.mini_swe_agent.connectors import GitConnector
+
+def run(self, task, image, *, git_enabled=False, git_server_url=None, agents=None, **kwargs):
+    if git_enabled and git_server_url:
+        git = GitConnector(
+            agent_id=agent_id,
+            agents=agents,
+            server_url=git_server_url,
+        )
+        git.setup(env)
+
+        # Now agents can use git commands in env:
+        env.execute("git push origin feature-branch")
+        env.execute("git pull origin main")
+        env.execute("git merge other-agent-branch")
+```
+
+## Environment backends
+
+Choose the execution environment for your agent:
+
+### Modal (cloud)
+
+```python
+from cooperbench.agents.mini_swe_agent.environments.modal import ModalEnvironment
+
+env = ModalEnvironment(
+    image=image,
+    cwd="/workspace/repo",
+    timeout=3600,
+)
+```
+
+### Docker (local)
+
+```python
+from cooperbench.agents.mini_swe_agent.environments.docker import DockerEnvironment
+
+env = DockerEnvironment(
+    image=image,
+    cwd="/workspace/repo",
+    timeout=3600,
+)
+```
+
+### GCP (Google Cloud)
+
+```python
+from cooperbench.agents.mini_swe_agent.environments.gcp import GCPEnvironment
+
+env = GCPEnvironment(
+    image=image,
+    cwd="/workspace/repo",
+    timeout=3600,
+    project_id="my-project",
+    zone="us-central1-a",
+)
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Track LLM costs accurately">
+    Return accurate cost tracking in `AgentResult.cost`:
+
+    ```python
+    # Using LiteLLM (automatic cost tracking)
+    from litellm import completion
+
+    response = completion(
+        model=model_name,
+        messages=messages,
+    )
+
+    # LiteLLM automatically adds cost metadata
+    cost = response._hidden_params.get("response_cost", 0.0)
+    ```
+
+    This enables accurate cost reporting in benchmark results.
+  </Accordion>
+
+  <Accordion title="Save conversation history">
+    Store the full agent conversation in `AgentResult.messages`:
+
+    ```python
+    messages = [
+        {"role": "system", "content": "You are a software engineer..."},
+        {"role": "user", "content": task},
+        {"role": "assistant", "content": "I'll implement..."},
+        ...
+    ]
+
+    return AgentResult(
+        messages=messages,
+        ...
+    )
+    ```
+
+    This enables debugging and analysis of agent behavior.
+  </Accordion>
+
+  <Accordion title="Generate clean git patches">
+    Ensure patches only contain meaningful changes:
+
+    ```python
+    # Capture base commit before any changes
+    base_commit = env.execute("git rev-parse HEAD").get("output").strip()
+
+    # ... agent makes changes ...
+
+    # Generate diff from base to current state
+    patch = env.execute(f"git diff {base_commit}").get("output").strip()
+
+    # The patch includes both committed and uncommitted changes
+    ```
+  </Accordion>
+
+  <Accordion title="Handle errors gracefully">
+    Catch exceptions and return error information:
+
+    ```python
+    try:
+        status, _ = agent.run(task=task)
+        error = None
+    except Exception as e:
+        status = "Error"
+        error = str(e)
+
+    return AgentResult(
+        status=status,
+        error=error,
+        ...
+    )
+    ```
+
+    This prevents entire benchmark runs from failing due to single task errors.
+  </Accordion>
+
+  <Accordion title="Clean up resources">
+    Always cleanup environments, even on error:
+
+    ```python
+    env = None
+    try:
+        env = ModalEnvironment(...)
+        # ... run agent ...
+    finally:
+        if env:
+            env.cleanup()
+    ```
+
+    This prevents resource leaks and hanging containers.
+  </Accordion>
+</AccordionGroup>
+
+## Examples
+
+### Minimal agent
+
+Simplest possible agent:
+
+```python
+from cooperbench.agents import AgentResult
+from cooperbench.agents.registry import register
+
+@register("simple_agent")
+class SimpleAgent:
+    def run(self, task, image, **kwargs):
+        from cooperbench.agents.mini_swe_agent.environments.modal import ModalEnvironment
+
+        env = ModalEnvironment(image=image, cwd="/workspace/repo", timeout=600)
+        base = env.execute("git rev-parse HEAD").get("output").strip()
+
+        # Simple implementation: just create a file
+        env.execute("echo '# TODO' > solution.py")
+
+        patch = env.execute(f"git diff {base}").get("output").strip()
+        env.cleanup()
+
+        return AgentResult(
+            status="Submitted",
+            patch=patch,
+            cost=0.0,
+            steps=1,
+            messages=[],
+            error=None,
+        )
+```
+
+### Agent with LLM
+
+Agent that uses an LLM:
+
+```python
+from cooperbench.agents import AgentResult
+from cooperbench.agents.registry import register
+from litellm import completion
+
+@register("llm_agent")
+class LLMAgent:
+    def run(self, task, image, *, model_name="gpt-4o", **kwargs):
+        from cooperbench.agents.mini_swe_agent.environments.modal import ModalEnvironment
+
+        env = ModalEnvironment(image=image, cwd="/workspace/repo", timeout=3600)
+        base = env.execute("git rev-parse HEAD").get("output").strip()
+
+        messages = [
+            {"role": "system", "content": "You are a software engineer."},
+            {"role": "user", "content": f"Implement this:\n\n{task}"}
+        ]
+
+        total_cost = 0.0
+        steps = 0
+
+        for _ in range(10):  # Max 10 iterations
+            response = completion(model=model_name, messages=messages)
+            total_cost += response._hidden_params.get("response_cost", 0.0)
+            steps += 1
+
+            content = response.choices[0].message.content
+            messages.append({"role": "assistant", "content": content})
+
+            # Execute commands from LLM response
+            # (parse commands from content and execute them)
+            # ...
+
+            if "DONE" in content:
+                break
+
+        patch = env.execute(f"git diff {base}").get("output").strip()
+        env.cleanup()
+
+        return AgentResult(
+            status="Submitted",
+            patch=patch,
+            cost=total_cost,
+            steps=steps,
+            messages=messages,
+            error=None,
+        )
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Running experiments" icon="play" href="/guides/running-experiments">
+    Learn how to run your custom agent on CooperBench
+  </Card>
+  <Card title="Evaluation" icon="check" href="/guides/evaluation">
+    Understand how agents are evaluated
+  </Card>
+  <Card title="Backends" icon="server" href="/guides/backends">
+    Choose the right execution backend
+  </Card>
+</CardGroup>

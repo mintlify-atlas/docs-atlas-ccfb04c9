@@ -1,0 +1,231 @@
+---
+title: run()
+description: Execute benchmark tasks with configurable agents and backends
+---
+
+Execute CooperBench tasks with customizable agents, models, and execution settings. This is the primary entry point for running benchmarks.
+
+## Function signature
+
+```python
+from cooperbench import run
+
+run(
+    run_name: str,
+    subset: str | None = None,
+    repo: str | None = None,
+    task_id: int | None = None,
+    features: list[int] | None = None,
+    model_name: str = "vertex_ai/gemini-3-flash-preview",
+    agent: str = "mini_swe_agent",
+    concurrency: int = 20,
+    force: bool = False,
+    redis_url: str = "redis://localhost:6379",
+    setting: str = "coop",
+    git_enabled: bool = False,
+    messaging_enabled: bool = True,
+    auto_eval: bool = True,
+    eval_concurrency: int = 10,
+    backend: str = "modal",
+    agent_config: str | None = None,
+) -> None
+```
+
+## Parameters
+
+<ParamField path="run_name" type="str" required>
+  Experiment name used for organizing logs. Creates a directory at `logs/{run_name}/`.
+</ParamField>
+
+<ParamField path="subset" type="str | None" default="None">
+  Use a predefined task subset (e.g., `"lite"` for quick testing). Subsets are defined in `dataset/subsets/`.
+</ParamField>
+
+<ParamField path="repo" type="str | None" default="None">
+  Filter tasks by repository name (e.g., `"llama_index_task"`). Runs only tasks from this repository.
+</ParamField>
+
+<ParamField path="task_id" type="int | None" default="None">
+  Filter to a specific task ID. Useful for debugging individual tasks.
+</ParamField>
+
+<ParamField path="features" type="list[int] | None" default="None">
+  Specific feature pair to run (e.g., `[1, 2]`). If not specified, runs all feature combinations.
+</ParamField>
+
+<ParamField path="model_name" type="str" default="vertex_ai/gemini-3-flash-preview">
+  LLM model identifier. Supports OpenAI models (e.g., `"gpt-4o"`), Anthropic models (e.g., `"claude-3-5-sonnet-20241022"`), and Vertex AI models (e.g., `"vertex_ai/gemini-3-flash-preview"`).
+</ParamField>
+
+<ParamField path="agent" type="str" default="mini_swe_agent">
+  Agent framework to use. Available agents: `"mini_swe_agent"`, `"swe_agent"`, `"openhands"`, `"mini_swe_agent_v2"`.
+</ParamField>
+
+<ParamField path="concurrency" type="int" default="20">
+  Maximum number of tasks to run in parallel.
+</ParamField>
+
+<ParamField path="force" type="bool" default="False">
+  If `True`, reruns tasks even if results already exist.
+</ParamField>
+
+<ParamField path="redis_url" type="str" default="redis://localhost:6379">
+  Redis server URL for agent communication in cooperative mode. Required when `messaging_enabled=True`.
+</ParamField>
+
+<ParamField path="setting" type="str" default="coop">
+  Execution mode:
+  - `"coop"`: Two agents collaborate on different features
+  - `"solo"`: Single agent implements both features
+</ParamField>
+
+<ParamField path="git_enabled" type="bool" default="False">
+  Enable git collaboration features (push, pull, merge). Only applies to cooperative mode.
+</ParamField>
+
+<ParamField path="messaging_enabled" type="bool" default="True">
+  Enable agent-to-agent messaging via the `send_message` command. Requires Redis in cooperative mode.
+</ParamField>
+
+<ParamField path="auto_eval" type="bool" default="True">
+  Automatically evaluate runs after completion. Results are saved to `eval.json`.
+</ParamField>
+
+<ParamField path="eval_concurrency" type="int" default="10">
+  Maximum number of parallel evaluations when `auto_eval=True`.
+</ParamField>
+
+<ParamField path="backend" type="str" default="modal">
+  Execution backend: `"modal"`, `"docker"`, or `"gcp"`.
+</ParamField>
+
+<ParamField path="agent_config" type="str | None" default="None">
+  Path to agent-specific configuration file (optional).
+</ParamField>
+
+## Basic usage
+
+### Run a single task
+
+```python
+from cooperbench import run
+
+# Run one task in cooperative mode
+run(
+    run_name="my_experiment",
+    repo="llama_index_task",
+    task_id=1,
+    features=[1, 2],
+    model_name="gpt-4o",
+)
+```
+
+### Run all tasks in a subset
+
+```python
+# Run the lite subset (faster iteration)
+run(
+    run_name="lite_test",
+    subset="lite",
+    model_name="vertex_ai/gemini-3-flash-preview",
+    concurrency=10,
+)
+```
+
+### Run in solo mode
+
+```python
+# Single agent implements both features
+run(
+    run_name="solo_baseline",
+    subset="lite",
+    setting="solo",
+    model_name="claude-3-5-sonnet-20241022",
+)
+```
+
+## Advanced usage
+
+### Custom agent and backend
+
+```python
+# Use SWE-agent with Docker backend
+run(
+    run_name="swe_agent_test",
+    repo="django_task",
+    task_id=5,
+    agent="swe_agent",
+    backend="docker",
+    model_name="gpt-4o",
+)
+```
+
+### Enable git collaboration
+
+```python
+# Agents can push/pull/merge via git
+run(
+    run_name="git_collab",
+    subset="lite",
+    git_enabled=True,
+    messaging_enabled=True,
+    model_name="gpt-4o",
+)
+```
+
+### Force rerun with custom concurrency
+
+```python
+# Rerun existing tasks with higher parallelism
+run(
+    run_name="rerun_experiment",
+    subset="lite",
+    force=True,
+    concurrency=50,
+    eval_concurrency=20,
+)
+```
+
+### Skip automatic evaluation
+
+```python
+# Run tasks without evaluating
+run(
+    run_name="quick_run",
+    subset="lite",
+    auto_eval=False,
+)
+
+# Evaluate later using cooperbench.evaluate()
+from cooperbench import evaluate
+evaluate(run_name="quick_run", subset="lite")
+```
+
+## Output structure
+
+Results are saved to `logs/{run_name}/{setting}/{repo}/{task_id}/{features}/`:
+
+```
+logs/my_experiment/
+├── config.json          # Run configuration
+├── summary.json         # Session summary with costs and pass rates
+└── coop/
+    └── llama_index_task/
+        └── 1/
+            └── f1_f2/
+                ├── result.json      # Task execution results
+                ├── agent1.patch     # Agent 1's code changes
+                ├── agent2.patch     # Agent 2's code changes
+                ├── agent1.log       # Agent 1's execution log
+                ├── agent2.log       # Agent 2's execution log
+                └── eval.json        # Evaluation results (if auto_eval=True)
+```
+
+## Return value
+
+This function returns `None`. Results are saved to the logs directory and printed to the console.
+
+## Related functions
+
+- [evaluate()](/api/evaluate) - Evaluate completed runs
+- [discover_tasks()](/api/discover) - Query available tasks

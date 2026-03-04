@@ -1,0 +1,650 @@
+---
+title: GCP setup
+description: Configure Google Cloud Platform as your CooperBench execution backend
+---
+
+Set up Google Cloud Platform to run CooperBench experiments at scale with high parallelism and full infrastructure control.
+
+## Quick start
+
+```bash
+# 1. Install GCP support
+pip install 'cooperbench[gcp]'
+
+# 2. Run configuration wizard
+cooperbench config gcp
+
+# 3. Run experiments
+cooperbench run --backend gcp -s lite
+cooperbench eval --backend gcp -n my-experiment
+```
+
+<Tip>
+  The configuration wizard handles everything automatically. Just follow the prompts!
+</Tip>
+
+## Why use GCP?
+
+GCP provides several advantages over the default Modal backend:
+
+<CardGroup cols={2}>
+  <Card title="Scalability" icon="chart-line">
+    Run hundreds of parallel evaluations using GCP Batch API
+  </Card>
+  <Card title="Cost control" icon="dollar-sign">
+    Use your own GCP credits and quotas with transparent pricing
+  </Card>
+  <Card title="Data locality" icon="database">
+    Keep all data and results in your GCP project
+  </Card>
+  <Card title="Customization" icon="sliders">
+    Use custom VM images, networks, and machine types
+  </Card>
+</CardGroup>
+
+## Prerequisites
+
+### GCP account
+
+You need a Google Cloud Platform account:
+
+1. Sign up at [cloud.google.com](https://cloud.google.com)
+2. Create a project at [console.cloud.google.com/projectcreate](https://console.cloud.google.com/projectcreate)
+3. Enable billing at [console.cloud.google.com/billing](https://console.cloud.google.com/billing)
+
+<Note>
+  GCP free tier includes **$300 credit** for new users - enough to run thousands of tasks!
+</Note>
+
+### gcloud CLI
+
+Install the Google Cloud SDK:
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    brew install google-cloud-sdk
+    ```
+  </Tab>
+
+  <Tab title="Linux">
+    ```bash
+    curl https://sdk.cloud.google.com | bash
+    ```
+  </Tab>
+
+  <Tab title="Windows">
+    Download from [cloud.google.com/sdk/docs/install](https://cloud.google.com/sdk/docs/install)
+  </Tab>
+</Tabs>
+
+Verify installation:
+```bash
+gcloud version
+```
+
+## Setup
+
+### Interactive configuration (recommended)
+
+Run the setup wizard:
+
+```bash
+cooperbench config gcp
+```
+
+<Steps>
+  <Step title="Check dependencies">
+    The wizard verifies:
+    - ✓ gcloud CLI is installed
+    - ✓ GCP Python packages are available
+    - ✓ Configuration directory is writable
+
+    If anything is missing, you'll get clear instructions.
+  </Step>
+
+  <Step title="Authenticate">
+    The wizard runs two authentication commands:
+
+    ```bash
+    # 1. Authenticate gcloud CLI
+    gcloud auth login
+
+    # 2. Set up Application Default Credentials (for Python SDK)
+    gcloud auth application-default login
+    ```
+
+    Both open a browser for Google account login.
+
+    <Warning>
+      You need **both** authentications. The first is for gcloud commands, the second is for Python libraries.
+    </Warning>
+  </Step>
+
+  <Step title="Select project, region, and zone">
+    The wizard prompts for:
+
+    **Project ID**: Your GCP project (e.g., `my-cooperbench-project`)
+
+    **Region**: Geographic region for VMs:
+    - `us-central1` (Iowa) - recommended for US
+    - `europe-west1` (Belgium) - recommended for Europe
+    - `asia-east1` (Taiwan) - recommended for Asia
+
+    **Zone**: Specific datacenter (e.g., `us-central1-a`)
+  </Step>
+
+  <Step title="Validate APIs">
+    The wizard tests access to required APIs:
+    - Compute Engine API
+    - Cloud Batch API
+    - Cloud Storage API
+
+    If an API isn't enabled, you'll get a direct link to enable it.
+  </Step>
+
+  <Step title="Save configuration">
+    Configuration is saved to:
+    - **macOS**: `~/Library/Application Support/cooperbench/config.json`
+    - **Linux**: `~/.config/cooperbench/config.json`
+    - **Windows**: `%APPDATA%\cooperbench\config.json`
+
+    You're ready to run experiments!
+  </Step>
+</Steps>
+
+### Skip validation (faster)
+
+For faster setup without API testing:
+
+```bash
+cooperbench config gcp --skip-tests
+```
+
+Use this if:
+- You've already enabled the required APIs
+- You want to configure quickly and test later
+- You're re-running configuration
+
+### Manual configuration (alternative)
+
+If you prefer manual setup:
+
+```bash
+# Authenticate
+gcloud auth login
+gcloud auth application-default login
+
+# Set project
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+gcloud config set project your-project-id
+
+# Enable APIs
+gcloud services enable \
+  compute.googleapis.com \
+  batch.googleapis.com \
+  storage.googleapis.com
+```
+
+## Required APIs
+
+The wizard validates these APIs (and provides links to enable them):
+
+<CardGroup cols={3}>
+  <Card title="Compute Engine">
+    For running VMs
+
+    [Enable API](https://console.cloud.google.com/apis/library/compute.googleapis.com)
+  </Card>
+
+  <Card title="Cloud Batch">
+    For parallel evaluation
+
+    [Enable API](https://console.cloud.google.com/apis/library/batch.googleapis.com)
+  </Card>
+
+  <Card title="Cloud Storage">
+    For storing results
+
+    [Enable API](https://console.cloud.google.com/apis/library/storage.googleapis.com)
+  </Card>
+</CardGroup>
+
+Enable all at once:
+```bash
+gcloud services enable \
+  compute.googleapis.com \
+  batch.googleapis.com \
+  storage.googleapis.com
+```
+
+## Usage
+
+### Run experiments
+
+```bash
+# Basic run with GCP backend
+cooperbench run --backend gcp -s lite
+
+# Cooperative agents with high concurrency
+cooperbench run \
+  --backend gcp \
+  --setting coop \
+  -s lite \
+  -m gemini/gemini-3-flash-preview \
+  --concurrency 50
+```
+
+### Evaluate results
+
+```bash
+# Evaluate with GCP Batch
+cooperbench eval --backend gcp -n my-experiment
+
+# Large-scale evaluation with high parallelism
+cooperbench eval \
+  --backend gcp \
+  -n my-experiment \
+  --concurrency 100
+```
+
+### Complete example
+
+```bash
+# One-time setup
+pip install 'cooperbench[gcp]'
+cooperbench config gcp
+
+# Run experiment
+cooperbench run \
+  --backend gcp \
+  --setting coop \
+  -s lite \
+  -m gemini/gemini-3-flash-preview \
+  --concurrency 30
+
+# Evaluate results with high parallelism
+cooperbench eval \
+  --backend gcp \
+  -n coop-msa-gemini-3-flash-lite \
+  --concurrency 100
+
+# Results saved to logs/
+```
+
+## Architecture
+
+### Agent execution
+
+Each task runs in an isolated VM:
+
+```
+┌──────────────────────────────────────┐
+│ CooperBench (Local)                  │
+│   ↓ SSH via gcloud compute ssh      │
+├──────────────────────────────────────┤
+│ GCP VM (Container-Optimized OS)      │
+│   ├─ Docker Container (Agent)        │
+│   │   └─ Agent code execution        │
+│   └─ Commands via docker exec        │
+└──────────────────────────────────────┘
+```
+
+**VM specifications**:
+- **Machine type**: e2-medium (2 vCPU, 4GB RAM)
+- **OS**: Container-Optimized OS
+- **Lifecycle**: Created per task, auto-deleted after completion
+- **Access**: SSH via gcloud CLI
+
+### Evaluation (GCP Batch)
+
+Evaluation uses GCP's managed batch service:
+
+```
+┌────────────────────────────────────────┐
+│ CooperBench (Local)                    │
+│   ↓ Submit Batch job                   │
+├────────────────────────────────────────┤
+│ GCP Batch (Managed)                    │
+│   ├─ Task 1 (VM 1)                     │
+│   ├─ Task 2 (VM 1)                     │
+│   ├─ Task 3 (VM 2)                     │
+│   ├─ ...                               │
+│   └─ Task N (VM M)                     │
+│         ↓ Results                      │
+├────────────────────────────────────────┤
+│ GCS Bucket (cooperbench-eval-PROJECT)  │
+│   ├─ Job manifests                     │
+│   ├─ Patches                           │
+│   └─ Results                           │
+└────────────────────────────────────────┘
+```
+
+**Benefits**:
+- Single job submission for all evaluations
+- Automatic VM scheduling and lifecycle
+- Parallel execution across VMs
+- Results persisted to Cloud Storage
+- Auto-cleanup after completion
+
+### Git server (optional)
+
+For multi-agent git collaboration:
+
+```
+┌─────────────────────────────────────┐
+│ Git Server VM (Debian)              │
+│   └─ git-daemon (port 9418)         │
+│         ↓ git:// protocol            │
+├─────────────────────────────────────┤
+│ VPC Network or External IP          │
+│   ├→ Agent 1 (git push/pull/merge)  │
+│   ├→ Agent 2 (git push/pull/merge)  │
+│   └→ Agent N (git push/pull/merge)  │
+└─────────────────────────────────────┘
+```
+
+Enabled with `--git` flag in cooperative mode.
+
+## Cost estimation
+
+Using default settings in us-central1:
+
+### Agent execution
+
+| Resource | Spec | Cost | Typical usage | Per task |
+|----------|------|------|---------------|----------|
+| VM | e2-medium (2 vCPU, 4GB) | ~$0.03/hour | 5-30 min | $0.0025-$0.015 |
+
+### Evaluation
+
+| Resource | Spec | Cost | Notes |
+|----------|------|------|-------|
+| VM | 4 vCPU, 16GB RAM | ~$0.15/hour/VM | Per batch worker |
+| Parallelism | 50 VMs | ~$7.50/hour | Typical configuration |
+| Storage | GCS Standard | ~$0.02/GB/month | Auto-delete after 7 days |
+
+### Example costs
+
+<Tabs>
+  <Tab title="Small run">
+    **10 tasks**
+
+    - Agent runs: 10 × $0.01 = $0.10
+    - Evaluation: ~$0.05
+    - **Total**: ~$0.15
+  </Tab>
+
+  <Tab title="Medium run">
+    **100 tasks**
+
+    - Agent runs: 100 × $0.01 = $1.00
+    - Evaluation: ~$0.50
+    - **Total**: ~$1.50
+  </Tab>
+
+  <Tab title="Large run">
+    **1000 tasks**
+
+    - Agent runs: 1000 × $0.01 = $10.00
+    - Evaluation (30 min): ~$3.75
+    - **Total**: ~$13.75
+  </Tab>
+</Tabs>
+
+<Tip>
+  GCP free tier includes **$300 credit** - enough for ~20,000 task runs!
+</Tip>
+
+## Advanced configuration
+
+### Custom VM images (optional)
+
+<Warning>
+  This is optional and only useful for large-scale evaluations (100+ tasks). Skip this for initial setup.
+</Warning>
+
+Pre-build VM images with Docker images cached to reduce startup time:
+
+```bash
+# Set your project
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+
+# Run the build script (takes ~30-60 minutes)
+./scripts/build_gcp_vm_image.sh
+```
+
+The script:
+1. Creates a temporary VM with Container-Optimized OS
+2. Pulls all CooperBench Docker images
+3. Creates a VM image snapshot (family: `cooperbench-eval`)
+4. Deletes the temporary VM
+
+**Use the custom image**:
+
+```yaml
+backend: gcp
+vm_image_family: cooperbench-eval
+```
+
+Or via environment variable:
+```bash
+export COOPERBENCH_VM_IMAGE="cooperbench-eval"
+```
+
+**When to use**:
+- ✓ Large evaluation runs (100+ tasks)
+- ✓ Repeated evaluations where startup time matters
+- ✗ Small runs (< 100 tasks) - not worth the build time
+- ✗ First-time setup - use defaults first
+
+### Custom VPC network (optional)
+
+For multi-agent git collaboration:
+
+```yaml
+backend: gcp
+git_network: cooperbench-vpc
+```
+
+<Note>
+  VPC networking is only required for git-based collaboration. Redis-based messaging works with the default network.
+</Note>
+
+### Region selection
+
+Choose regions based on your location:
+
+**US**:
+- `us-central1` (Iowa) - recommended
+- `us-east1` (South Carolina)
+- `us-west1` (Oregon)
+
+**Europe**:
+- `europe-west1` (Belgium) - recommended
+- `europe-west4` (Netherlands)
+- `europe-north1` (Finland)
+
+**Asia**:
+- `asia-east1` (Taiwan) - recommended
+- `asia-southeast1` (Singapore)
+- `asia-northeast1` (Tokyo)
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="gcloud not found">
+    **Error**:
+    ```
+    Error: gcloud: command not found
+    ```
+
+    **Solution**:
+    ```bash
+    # macOS
+    brew install google-cloud-sdk
+
+    # Linux
+    curl https://sdk.cloud.google.com | bash
+
+    # Verify
+    gcloud version
+    ```
+  </Accordion>
+
+  <Accordion title="Not authenticated">
+    **Error**:
+    ```
+    Error: Your default credentials were not found
+    Error: Could not automatically determine credentials
+    ```
+
+    **Solution**:
+
+    You need **both** types of authentication:
+
+    ```bash
+    # 1. Authenticate gcloud CLI
+    gcloud auth login
+
+    # 2. Set up Application Default Credentials (REQUIRED for Python SDK)
+    gcloud auth application-default login
+    ```
+
+    **Why both?**
+    - `gcloud auth login`: For gcloud CLI commands
+    - `gcloud auth application-default login`: For GCP Python libraries
+
+    The configuration wizard handles both automatically.
+  </Accordion>
+
+  <Accordion title="API not enabled">
+    **Error**:
+    ```
+    Error: API [compute.googleapis.com] not enabled
+    ```
+
+    **Solution**:
+
+    Enable required APIs:
+    ```bash
+    gcloud services enable \
+      compute.googleapis.com \
+      batch.googleapis.com \
+      storage.googleapis.com
+    ```
+
+    Or enable via console:
+    - [Compute Engine API](https://console.cloud.google.com/apis/library/compute.googleapis.com)
+    - [Cloud Batch API](https://console.cloud.google.com/apis/library/batch.googleapis.com)
+    - [Cloud Storage API](https://console.cloud.google.com/apis/library/storage.googleapis.com)
+  </Accordion>
+
+  <Accordion title="Permission denied">
+    **Error**:
+    ```
+    Error: The caller does not have permission
+    ```
+
+    **Solution**:
+
+    1. Ensure billing is enabled: [console.cloud.google.com/billing](https://console.cloud.google.com/billing)
+    2. Check IAM permissions: [console.cloud.google.com/iam-admin/iam](https://console.cloud.google.com/iam-admin/iam)
+    3. Required roles:
+       - `roles/compute.instanceAdmin.v1` (Compute Instance Admin)
+       - `roles/batch.jobsEditor` (Batch Job Editor)
+       - `roles/storage.admin` (Storage Admin)
+  </Accordion>
+
+  <Accordion title="Quota exceeded">
+    **Error**:
+    ```
+    Error: Quota exceeded for quota metric 'cpus'
+    ```
+
+    **Solution**:
+
+    1. Check quotas: [console.cloud.google.com/iam-admin/quotas](https://console.cloud.google.com/iam-admin/quotas)
+    2. Request quota increase (usually approved within hours)
+    3. Reduce `--concurrency` parameter to use fewer VMs:
+       ```bash
+       cooperbench run --backend gcp -s lite --concurrency 10
+       ```
+  </Accordion>
+
+  <Accordion title="Python package missing">
+    **Error**:
+    ```
+    Error: No module named 'google.cloud.compute'
+    ```
+
+    **Solution**:
+    ```bash
+    pip install 'cooperbench[gcp]'
+    ```
+
+    Or install packages individually:
+    ```bash
+    pip install google-cloud-batch google-cloud-compute google-cloud-storage
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Migration from Modal
+
+To switch from Modal to GCP:
+
+<Steps>
+  <Step title="Install GCP dependencies">
+    ```bash
+    pip install 'cooperbench[gcp]'
+    ```
+  </Step>
+
+  <Step title="Configure GCP">
+    ```bash
+    cooperbench config gcp
+    ```
+  </Step>
+
+  <Step title="Use --backend gcp">
+    ```bash
+    # Before (Modal)
+    cooperbench run -s lite
+    cooperbench eval -n experiment-name
+
+    # After (GCP)
+    cooperbench run --backend gcp -s lite
+    cooperbench eval --backend gcp -n experiment-name
+    ```
+
+    All other commands and options remain the same!
+  </Step>
+</Steps>
+
+## Comparison: Modal vs GCP
+
+| Feature | Modal (Default) | GCP |
+|---------|----------------|-----|
+| **Setup** | `modal setup` | `cooperbench config gcp` |
+| **Account** | Modal account | GCP account |
+| **Cost** | Modal credits | Pay-as-you-go |
+| **Scale** | Auto-scaling | Up to quotas |
+| **Free tier** | Limited | $300 credit |
+| **Data location** | External service | Your GCP project |
+| **Customization** | Limited | Full control |
+| **Parallelism** | 50-100 | 100+ |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Running experiments" icon="play" href="/guides/running-experiments">
+    Learn how to run experiments with GCP backend
+  </Card>
+  <Card title="Evaluation" icon="check" href="/guides/evaluation">
+    Understand the evaluation process
+  </Card>
+  <Card title="Backends" icon="server" href="/guides/backends">
+    Compare all execution backends
+  </Card>
+</CardGroup>

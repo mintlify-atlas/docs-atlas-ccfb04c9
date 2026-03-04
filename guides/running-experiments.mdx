@@ -1,0 +1,476 @@
+---
+title: Running experiments
+description: Learn how to run CooperBench experiments with different settings, filters, and backends
+---
+
+Run benchmark experiments to evaluate AI agents on cooperative software engineering tasks.
+
+## Quick start
+
+Run a simple experiment with default settings:
+
+```bash
+cooperbench run --setting solo -s lite
+```
+
+This will:
+- Run in solo mode (single agent per task)
+- Use the "lite" subset of tasks
+- Auto-generate an experiment name like `solo-msa-gemini-3-flash-lite`
+- Save results to `logs/`
+
+## Basic usage
+
+<Steps>
+  <Step title="Choose a setting">
+    CooperBench supports two evaluation settings:
+
+    **Cooperative (coop)**: Two agents collaborate on implementing two features
+    ```bash
+    cooperbench run --setting coop -s lite
+    ```
+
+    **Solo**: Single agent implements both features independently
+    ```bash
+    cooperbench run --setting solo -s lite
+    ```
+  </Step>
+
+  <Step title="Select tasks to run">
+    Filter tasks using subsets, repositories, or task IDs:
+
+    <Tabs>
+      <Tab title="Subset">
+        Use predefined task collections:
+        ```bash
+        cooperbench run --setting solo -s lite
+        ```
+
+        Common subsets:
+        - `lite` - Small subset for quick testing
+        - `dev` - Development subset
+        - Custom subsets in `dataset/subsets/`
+      </Tab>
+
+      <Tab title="Repository">
+        Run all tasks from a specific repository:
+        ```bash
+        cooperbench run --setting solo -r llama_index_task
+        ```
+      </Tab>
+
+      <Tab title="Task ID">
+        Run a specific task:
+        ```bash
+        cooperbench run --setting solo -r llama_index_task -t 8394
+        ```
+      </Tab>
+
+      <Tab title="Feature pair">
+        Run a specific feature pair within a task:
+        ```bash
+        cooperbench run --setting solo -r llama_index_task -t 8394 -f 1,2
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Name your experiment">
+    Provide a custom name or let CooperBench auto-generate one:
+
+    ```bash
+    # Custom name
+    cooperbench run -n my-experiment --setting solo -s lite
+
+    # Auto-generated (recommended)
+    cooperbench run --setting solo -s lite
+    # → solo-msa-gemini-3-flash-lite
+    ```
+
+    <Tip>
+      Auto-generated names include the setting, agent, model, and filters, making experiments easy to identify.
+    </Tip>
+  </Step>
+
+  <Step title="Run the experiment">
+    Execute and monitor progress:
+
+    ```bash
+    cooperbench run --setting coop -s lite
+    ```
+
+    Output shows:
+    - Task progress with status indicators
+    - Cost tracking per task
+    - Automatic evaluation results (if enabled)
+    - Summary statistics
+  </Step>
+</Steps>
+
+## Command reference
+
+### Basic options
+
+<ParamField path="-n, --name" type="string">
+  Experiment name. Auto-generated if not provided.
+
+  ```bash
+  cooperbench run -n my-experiment --setting solo -s lite
+  ```
+</ParamField>
+
+<ParamField path="--setting" type="enum" default="coop">
+  Evaluation setting: `coop` (collaborative) or `solo` (independent)
+
+  ```bash
+  cooperbench run --setting solo -s lite
+  ```
+</ParamField>
+
+<ParamField path="-s, --subset" type="string">
+  Use a predefined task subset from `dataset/subsets/`
+
+  ```bash
+  cooperbench run --setting solo -s lite
+  ```
+</ParamField>
+
+<ParamField path="-r, --repo" type="string">
+  Filter by repository name
+
+  ```bash
+  cooperbench run --setting solo -r llama_index_task
+  ```
+</ParamField>
+
+<ParamField path="-t, --task" type="integer">
+  Filter by specific task ID
+
+  ```bash
+  cooperbench run --setting solo -r llama_index_task -t 8394
+  ```
+</ParamField>
+
+<ParamField path="-f, --features" type="string">
+  Specific feature pair to run (comma-separated)
+
+  ```bash
+  cooperbench run --setting solo -r llama_index_task -t 8394 -f 1,2
+  ```
+</ParamField>
+
+### Model and agent
+
+<ParamField path="-m, --model" type="string" default="vertex_ai/gemini-3-flash-preview">
+  LLM model to use. Supports any LiteLLM-compatible model.
+
+  ```bash
+  # OpenAI
+  cooperbench run --setting solo -s lite -m gpt-4o
+
+  # Anthropic
+  cooperbench run --setting solo -s lite -m claude-3-5-sonnet-20241022
+
+  # Google Vertex AI
+  cooperbench run --setting solo -s lite -m vertex_ai/gemini-3-flash-preview
+  ```
+</ParamField>
+
+<ParamField path="-a, --agent" type="string" default="mini_swe_agent">
+  Agent framework to use
+
+  ```bash
+  cooperbench run --setting solo -s lite -a mini_swe_agent
+  ```
+
+  <Tip>
+    See the [custom agents guide](/guides/custom-agents) to implement your own agent.
+  </Tip>
+</ParamField>
+
+<ParamField path="--agent-config" type="string">
+  Path to agent-specific configuration file
+
+  ```bash
+  cooperbench run --setting solo -s lite --agent-config config/custom.yaml
+  ```
+</ParamField>
+
+### Concurrency
+
+<ParamField path="-c, --concurrency" type="integer" default="30">
+  Number of tasks to run in parallel
+
+  ```bash
+  # High parallelism for faster runs
+  cooperbench run --setting solo -s lite --concurrency 50
+
+  # Low parallelism to reduce costs
+  cooperbench run --setting solo -s lite --concurrency 5
+  ```
+
+  <Warning>
+    Higher concurrency increases speed but also API costs and resource usage.
+  </Warning>
+</ParamField>
+
+### Collaboration features
+
+<ParamField path="--git" type="boolean">
+  Enable git-based collaboration (agents can push/pull/merge)
+
+  ```bash
+  cooperbench run --setting coop -s lite --git
+  ```
+
+  <Note>
+    Only available in cooperative mode. Requires git server setup.
+  </Note>
+</ParamField>
+
+<ParamField path="--no-messaging" type="boolean">
+  Disable inter-agent messaging
+
+  ```bash
+  cooperbench run --setting coop -s lite --no-messaging
+  ```
+</ParamField>
+
+<ParamField path="--redis" type="string" default="redis://localhost:6379">
+  Redis URL for inter-agent communication
+
+  ```bash
+  cooperbench run --setting coop -s lite --redis redis://myhost:6379
+  ```
+</ParamField>
+
+### Backend selection
+
+<ParamField path="--backend" type="enum" default="modal">
+  Execution backend: `modal`, `docker`, or `gcp`
+
+  ```bash
+  # Modal (cloud, default)
+  cooperbench run --setting solo -s lite --backend modal
+
+  # Docker (local)
+  cooperbench run --setting solo -s lite --backend docker
+
+  # GCP (Google Cloud)
+  cooperbench run --setting solo -s lite --backend gcp
+  ```
+
+  See the [backends guide](/guides/backends) for details on each option.
+</ParamField>
+
+### Evaluation
+
+<ParamField path="--no-auto-eval" type="boolean">
+  Disable automatic evaluation after task completion
+
+  ```bash
+  cooperbench run --setting solo -s lite --no-auto-eval
+  ```
+
+  By default, tasks are evaluated automatically as they complete.
+</ParamField>
+
+<ParamField path="--eval-concurrency" type="integer" default="10">
+  Number of parallel evaluations for auto-eval
+
+  ```bash
+  cooperbench run --setting solo -s lite --eval-concurrency 20
+  ```
+</ParamField>
+
+### Other options
+
+<ParamField path="--force" type="boolean">
+  Force rerun even if results already exist
+
+  ```bash
+  cooperbench run --setting solo -s lite --force
+  ```
+</ParamField>
+
+## Examples
+
+### Single task with detailed output
+
+Run one task to see detailed agent output:
+
+```bash
+cooperbench run --setting solo -r llama_index_task -t 8394 -f 1,2
+```
+
+Output:
+```
+cooperbench solo-msa-gemini-3-flash-llama-index-8394 (solo)
+task: llama_index_task/8394 features: [1, 2]
+agent: mini_swe_agent
+model: vertex_ai/gemini-3-flash-preview
+
+┌───────┬──────────┬───────────┬────────┬────────┬───────┐
+│ agent │ feature  │ status    │   cost │  steps │ lines │
+├───────┼──────────┼───────────┼────────┼────────┼───────┤
+│ solo  │ 1,2      │ Submitted │  $0.42 │     18 │    45 │
+└───────┴──────────┴───────────┴────────┴────────┴───────┘
+
+total: $0.42 time: 187s
+```
+
+### Cooperative experiment
+
+Run multiple tasks with two agents collaborating:
+
+```bash
+cooperbench run \
+  --setting coop \
+  -s lite \
+  -m gpt-4o \
+  --concurrency 10
+```
+
+Output shows progress:
+```
+cooperbench coop-msa-gpt-4o-lite (coop)
+tasks: 25 concurrency: 10
+agent: mini_swe_agent
+model: gpt-4o
+tools: messaging
+
+✓ done llama_index_task/8394 [1,2]
+  ✓ pass llama_index_task/8394 [1,2]
+✓ done dspy_task/142 [1,2]
+  ✓ pass dspy_task/142 [1,2]
+...
+
+runs:  25 completed
+evals: 25 evaluated, 23 passed, 2 failed (92.0%)
+cost:  $15.30
+time:  8m 42s (agent: 6m 15s)
+
+logs: logs/coop-msa-gpt-4o-lite/coop
+```
+
+### Solo with git collaboration
+
+Enable git features in solo mode:
+
+```bash
+cooperbench run \
+  --setting solo \
+  -s lite \
+  --git \
+  --backend gcp
+```
+
+### Specific model and high concurrency
+
+Run with Claude and high parallelism:
+
+```bash
+cooperbench run \
+  --setting coop \
+  -s lite \
+  -m claude-3-5-sonnet-20241022 \
+  --concurrency 50 \
+  --backend gcp
+```
+
+### Filter by repository
+
+Run all tasks from a single repository:
+
+```bash
+cooperbench run \
+  --setting solo \
+  -r llama_index_task \
+  -m gpt-4o
+```
+
+## Output structure
+
+Results are saved to `logs/{experiment-name}/`:
+
+```
+logs/
+└── solo-msa-gemini-3-flash-lite/
+    ├── config.json              # Experiment configuration
+    ├── summary.json             # Aggregate statistics
+    └── solo/                    # Setting-specific results
+        └── llama_index_task/
+            └── 8394/
+                └── f1_f2/       # Feature pair results
+                    ├── solo.patch        # Generated code changes
+                    ├── result.json       # Task execution details
+                    ├── eval.json         # Evaluation results
+                    └── trajectory.json   # Agent conversation history
+```
+
+### Result files
+
+<CodeGroup>
+```json config.json
+{
+  "run_name": "solo-msa-gemini-3-flash-lite",
+  "agent_framework": "mini_swe_agent",
+  "model": "vertex_ai/gemini-3-flash-preview",
+  "setting": "solo",
+  "concurrency": 30,
+  "total_tasks": 25,
+  "started_at": "2024-03-15T10:30:00"
+}
+```
+
+```json result.json
+{
+  "repo": "llama_index_task",
+  "task_id": 8394,
+  "features": [1, 2],
+  "status": "Submitted",
+  "cost": 0.42,
+  "steps": 18,
+  "duration": 187,
+  "patch": "diff --git a/..."
+}
+```
+
+```json summary.json
+{
+  "run_name": "solo-msa-gemini-3-flash-lite",
+  "completed_at": "2024-03-15T11:15:30",
+  "pass_rate": 0.92,
+  "total_tasks": 25,
+  "completed": 25,
+  "skipped": 0,
+  "failed": 0,
+  "total_cost": 15.30,
+  "total_time_seconds": 2730,
+  "eval": {
+    "total_evaluated": 25,
+    "passed": 23,
+    "failed": 2,
+    "errors": 0,
+    "pass_rate": 0.92
+  }
+}
+```
+</CodeGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" icon="check" href="/guides/evaluation">
+    Learn how to evaluate your experiment results
+  </Card>
+  <Card title="Backends" icon="server" href="/guides/backends">
+    Choose the right execution backend for your needs
+  </Card>
+  <Card title="Custom agents" icon="robot" href="/guides/custom-agents">
+    Implement your own agent framework
+  </Card>
+  <Card title="GCP setup" icon="cloud" href="/guides/gcp-setup">
+    Set up Google Cloud Platform backend
+  </Card>
+</CardGroup>

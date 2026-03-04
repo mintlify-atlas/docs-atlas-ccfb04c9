@@ -1,0 +1,502 @@
+---
+title: Environment classes
+description: Work with task environments and create custom sandboxes
+---
+
+CooperBench uses Docker-based environments to provide isolated, reproducible task execution. Each task runs in a containerized environment with the repository code and test infrastructure.
+
+## Environment structure
+
+Each task has a corresponding Docker image that includes:
+
+- Base repository code (before features are implemented)
+- Python/Node.js/other runtime dependencies
+- Test runner script (`/usr/local/bin/runner.sh`)
+- Git repository setup
+
+## Image naming convention
+
+Images follow the pattern:
+
+```
+cooperbench/{repo_name}:task{task_id}
+```
+
+Examples:
+- `cooperbench/llama_index_task:task1`
+- `cooperbench/django_task:task5`
+- `cooperbench/flask_task:task3`
+
+## Getting image names
+
+```python
+from cooperbench.utils import get_image_name
+
+image = get_image_name("llama_index_task", 1)
+print(image)  # "cooperbench/llama_index_task:task1"
+```
+
+## Working with environments
+
+### Create a sandbox
+
+```python
+from cooperbench.eval.backends import get_backend
+from cooperbench.utils import get_image_name
+
+# Get the image for a specific task
+image = get_image_name("llama_index_task", 1)
+
+# Create sandbox
+backend = get_backend("modal")
+sandbox = backend.create_sandbox(
+    image=image,
+    timeout=600,
+    workdir="/workspace",
+)
+
+try:
+    # Sandbox is ready to use
+    result = sandbox.exec("ls", "-la")
+    print(result.stdout_read())
+finally:
+    sandbox.terminate()
+```
+
+### Execute commands
+
+```python
+from cooperbench.eval.backends import get_backend
+from cooperbench.utils import get_image_name
+
+backend = get_backend("docker")
+image = get_image_name("llama_index_task", 1)
+sandbox = backend.create_sandbox(image, timeout=300)
+
+try:
+    # Check Python version
+    result = sandbox.exec("python", "--version")
+    print(result.stdout_read())
+
+    # List repository files
+    result = sandbox.exec("find", "/workspace", "-type", "f", "-name", "*.py")
+    files = result.stdout_read().strip().split("\n")
+    print(f"Found {len(files)} Python files")
+
+    # Run tests
+    result = sandbox.exec("pytest", "--version")
+    print(result.stdout_read())
+finally:
+    sandbox.terminate()
+```
+
+### Apply patches
+
+```python
+import base64
+from cooperbench.eval.backends import get_backend
+from cooperbench.utils import get_image_name
+
+def write_patch(sandbox, filename: str, content: str):
+    """Write a patch file to the sandbox."""
+    encoded = base64.b64encode(content.encode()).decode()
+    sandbox.exec("bash", "-c", f"echo {encoded} | base64 -d > {filename}")
+
+backend = get_backend("modal")
+image = get_image_name("llama_index_task", 1)
+sandbox = backend.create_sandbox(image, timeout=600)
+
+try:
+    # Write patch
+    patch_content = """
+diff --git a/src/main.py b/src/main.py
+index 123456..789abc 100644
+--- a/src/main.py
++++ b/src/main.py
+@@ -1,3 +1,4 @@
+ def main():
++    print("Hello, world!")
+     pass
+"""
+    write_patch(sandbox, "feature.patch", patch_content)
+
+    # Apply patch
+    result = sandbox.exec("git", "apply", "feature.patch")
+    if result.returncode == 0:
+        print("Patch applied successfully")
+    else:
+        print(f"Patch failed: {result.stderr_read()}")
+finally:
+    sandbox.terminate()
+```
+
+### Run tests
+
+```python
+from cooperbench.eval.backends import get_backend
+from cooperbench.utils import get_image_name
+
+backend = get_backend("modal")
+image = get_image_name("llama_index_task", 1)
+sandbox = backend.create_sandbox(image, timeout=600)
+
+try:
+    # Use the built-in test runner
+    # runner.sh applies patches and runs tests
+    result = sandbox.exec(
+        "bash",
+        "/usr/local/bin/runner.sh",
+        "tests.patch",
+        "feature.patch",
+    )
+
+    output = result.stdout_read() + result.stderr_read()
+    print(output)
+
+    # Parse test results
+    if "passed" in output.lower():
+        print("Tests passed!")
+    else:
+        print("Tests failed")
+finally:
+    sandbox.terminate()
+```
+
+## Test runner script
+
+Each environment includes `/usr/local/bin/runner.sh` which:
+
+1. Applies patches in order (tests first, then features)
+2. Runs the test suite
+3. Reports results
+
+Usage:
+
+```bash
+# Apply tests patch only
+/usr/local/bin/runner.sh tests.patch
+
+# Apply tests and feature patches
+/usr/local/bin/runner.sh tests.patch feature.patch
+
+# Apply tests and multiple feature patches
+/usr/local/bin/runner.sh tests.patch feature1.patch feature2.patch
+```
+
+## Parsing test output
+
+```python
+import re
+
+def parse_test_results(output: str) -> dict:
+    """Parse pytest output for pass/fail counts."""
+    # Look for pytest summary line
+    # Example: "5 passed, 2 failed in 1.23s"
+    match = re.search(r"(\d+)\s+passed", output)
+    passed = int(match.group(1)) if match else 0
+
+    match = re.search(r"(\d+)\s+failed", output)
+    failed = int(match.group(1)) if match else 0
+
+    return {
+        "passed": passed,
+        "failed": failed,
+        "total": passed + failed,
+        "success": failed == 0 and passed > 0,
+    }
+
+# Use it
+from cooperbench.eval.backends import get_backend
+from cooperbench.utils import get_image_name
+
+backend = get_backend("modal")
+image = get_image_name("llama_index_task", 1)
+sandbox = backend.create_sandbox(image, timeout=600)
+
+try:
+    result = sandbox.exec("pytest", "tests/", "-v")
+    output = result.stdout_read() + result.stderr_read()
+
+    results = parse_test_results(output)
+    print(f"Results: {results['passed']}/{results['total']} tests passed")
+finally:
+    sandbox.terminate()
+```
+
+## Environment variables
+
+Environments can be configured with environment variables:
+
+```python
+# Note: This is backend-specific
+# For Docker backend:
+from cooperbench.eval.backends.docker import DockerBackend
+import docker
+
+client = docker.from_env()
+container = client.containers.run(
+    image="cooperbench/llama_index_task:task1",
+    command="python --version",
+    environment={
+        "PYTHONPATH": "/workspace/src",
+        "DEBUG": "1",
+    },
+    remove=True,
+    detach=False,
+)
+```
+
+## Building custom environments
+
+### Dockerfile structure
+
+Create a Dockerfile for your custom task:
+
+```dockerfile
+FROM python:3.11-slim
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up workspace
+WORKDIR /workspace
+
+# Copy repository code
+COPY repo/ /workspace/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Set up git repository
+RUN git init && \
+    git config user.name "CooperBench" && \
+    git config user.email "test@cooperbench" && \
+    git add . && \
+    git commit -m "Initial commit"
+
+# Copy test runner script
+COPY runner.sh /usr/local/bin/runner.sh
+RUN chmod +x /usr/local/bin/runner.sh
+
+# Default command
+CMD ["/bin/bash"]
+```
+
+### Test runner script
+
+Create `runner.sh`:
+
+```bash
+#!/bin/bash
+set -e
+
+# Apply patches in order
+for patch in "$@"; do
+    if [ -f "$patch" ]; then
+        echo "Applying $patch..."
+        git apply "$patch" || exit 1
+    fi
+done
+
+# Run tests
+echo "Running tests..."
+pytest tests/ -v --tb=short
+```
+
+### Build and push image
+
+```bash
+# Build image
+docker build -t cooperbench/my_task:task1 .
+
+# Test locally
+docker run --rm cooperbench/my_task:task1 python --version
+
+# Push to registry
+docker push cooperbench/my_task:task1
+```
+
+### Use custom image
+
+```python
+from cooperbench.eval.backends import get_backend
+
+backend = get_backend("docker")
+sandbox = backend.create_sandbox(
+    image="cooperbench/my_task:task1",
+    timeout=600,
+)
+
+try:
+    result = sandbox.exec("python", "--version")
+    print(result.stdout_read())
+finally:
+    sandbox.terminate()
+```
+
+## Advanced usage
+
+### Multi-step execution
+
+```python
+from cooperbench.eval.backends import get_backend
+from cooperbench.utils import get_image_name
+
+backend = get_backend("modal")
+image = get_image_name("llama_index_task", 1)
+sandbox = backend.create_sandbox(image, timeout=900)
+
+try:
+    # Install additional dependencies
+    sandbox.exec("pip", "install", "black", "mypy")
+
+    # Format code
+    result = sandbox.exec("black", "/workspace/src")
+    print("Formatted code")
+
+    # Type check
+    result = sandbox.exec("mypy", "/workspace/src")
+    if result.returncode == 0:
+        print("Type checking passed")
+
+    # Run tests
+    result = sandbox.exec("pytest", "tests/", "-v")
+    print(result.stdout_read())
+finally:
+    sandbox.terminate()
+```
+
+### Copy files from sandbox
+
+```python
+# Note: This is backend-specific
+# For Docker backend, you can copy files out:
+import docker
+import tarfile
+import io
+
+client = docker.from_env()
+container = client.containers.run(
+    image="cooperbench/llama_index_task:task1",
+    command="sleep 300",
+    detach=True,
+)
+
+try:
+    # Get file from container
+    bits, stat = container.get_archive("/workspace/output.txt")
+    stream = io.BytesIO(b"".join(bits))
+    tar = tarfile.open(fileobj=stream)
+    content = tar.extractfile("output.txt").read()
+    print(content.decode())
+finally:
+    container.stop()
+    container.remove()
+```
+
+### Environment debugging
+
+```python
+from cooperbench.eval.backends import get_backend
+from cooperbench.utils import get_image_name
+
+def debug_environment(repo: str, task_id: int):
+    """Print environment info for a task."""
+    backend = get_backend("docker")
+    image = get_image_name(repo, task_id)
+    sandbox = backend.create_sandbox(image, timeout=300)
+
+    try:
+        # System info
+        result = sandbox.exec("uname", "-a")
+        print(f"System: {result.stdout_read()}")
+
+        # Python version
+        result = sandbox.exec("python", "--version")
+        print(f"Python: {result.stdout_read()}")
+
+        # Installed packages
+        result = sandbox.exec("pip", "list")
+        print(f"Packages:\n{result.stdout_read()}")
+
+        # Git status
+        result = sandbox.exec("git", "status")
+        print(f"Git status:\n{result.stdout_read()}")
+
+        # File structure
+        result = sandbox.exec("tree", "/workspace", "-L", "2")
+        print(f"Files:\n{result.stdout_read()}")
+    finally:
+        sandbox.terminate()
+
+# Use it
+debug_environment("llama_index_task", 1)
+```
+
+## Best practices
+
+### Always cleanup sandboxes
+
+```python
+from cooperbench.eval.backends import get_backend
+
+backend = get_backend("modal")
+sandbox = backend.create_sandbox("cooperbench/llama_index_task:task1")
+
+try:
+    # Your code here
+    pass
+finally:
+    # Always terminate to free resources
+    sandbox.terminate()
+```
+
+### Handle timeouts gracefully
+
+```python
+from cooperbench.eval.backends import get_backend
+
+backend = get_backend("modal")
+
+# Set appropriate timeout
+sandbox = backend.create_sandbox(
+    image="cooperbench/llama_index_task:task1",
+    timeout=600,  # 10 minutes
+)
+
+try:
+    result = sandbox.exec("pytest", "tests/", "--timeout=300")
+    # Handle result
+except Exception as e:
+    print(f"Execution timed out or failed: {e}")
+finally:
+    sandbox.terminate()
+```
+
+### Reuse images
+
+```python
+from cooperbench.utils import get_image_name
+from cooperbench.eval.backends import get_backend
+
+# Cache image name
+image = get_image_name("llama_index_task", 1)
+backend = get_backend("modal")
+
+# Create multiple sandboxes from same image
+for i in range(5):
+    sandbox = backend.create_sandbox(image, timeout=300)
+    try:
+        # Use sandbox
+        pass
+    finally:
+        sandbox.terminate()
+```
+
+## Related functions
+
+- [get_backend()](/api/backends#get-backend-instance) - Get execution backend
+- [run_patch_test()](/api/evaluate#run_patch_test) - Test patches in environments
+- [test_merged()](/api/evaluate#test_merged) - Test merged patches

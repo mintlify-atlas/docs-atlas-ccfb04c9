@@ -1,0 +1,544 @@
+---
+title: Execution backends
+description: Configure and use different execution backends for running tasks
+---
+
+CooperBench supports multiple execution backends for running agent tasks and evaluations. Each backend provides isolated sandbox environments.
+
+## Available backends
+
+- **modal** (default) - Serverless containers via Modal.com
+- **docker** - Local Docker containers
+- **gcp** - Google Cloud Platform Batch jobs
+
+## Using backends
+
+### Specify backend in run()
+
+```python
+from cooperbench import run
+
+# Use Modal (default)
+run(
+    run_name="modal_run",
+    subset="lite",
+    backend="modal",
+)
+
+# Use Docker
+run(
+    run_name="docker_run",
+    subset="lite",
+    backend="docker",
+)
+
+# Use GCP Batch
+run(
+    run_name="gcp_run",
+    subset="lite",
+    backend="gcp",
+)
+```
+
+### Specify backend in evaluate()
+
+```python
+from cooperbench import evaluate
+
+# Evaluate using Modal
+evaluate(
+    run_name="my_experiment",
+    backend="modal",
+)
+
+# Evaluate using Docker (local)
+evaluate(
+    run_name="my_experiment",
+    backend="docker",
+    concurrency=5,  # Lower concurrency for local resources
+)
+
+# Evaluate using GCP Batch (high-scale)
+evaluate(
+    run_name="large_experiment",
+    backend="gcp",
+    concurrency=100,
+)
+```
+
+## Backend comparison
+
+| Feature | Modal | Docker | GCP Batch |
+|---------|-------|--------|----------|
+| Setup | Requires Modal account | Local Docker only | GCP project required |
+| Speed | Fast startup | Instant | Slower startup |
+| Concurrency | High (100+) | Limited by local CPU | Very high (1000+) |
+| Cost | Pay per second | Free (local) | Pay per hour |
+| Best for | Development, medium scale | Local testing, debugging | Large-scale evaluation |
+
+## Backend API
+
+All backends implement the `EvalBackend` protocol:
+
+```python
+class EvalBackend(Protocol):
+    """Backend for creating evaluation sandboxes."""
+
+    def create_sandbox(
+        self,
+        image: str,
+        timeout: int = 600,
+        workdir: str = "/workspace",
+    ) -> Sandbox:
+        """Create a new sandbox for evaluation.
+
+        Args:
+            image: Docker image name
+            timeout: Maximum runtime in seconds
+            workdir: Working directory inside container
+
+        Returns:
+            Sandbox instance
+        """
+        ...
+```
+
+### Sandbox interface
+
+```python
+class Sandbox(Protocol):
+    """Abstract sandbox for running commands."""
+
+    def exec(self, *args: str) -> ExecResult:
+        """Execute a command.
+
+        Args:
+            *args: Command and arguments (e.g., "bash", "-c", "echo hello")
+
+        Returns:
+            ExecResult with returncode and output
+        """
+        ...
+
+    def terminate(self) -> None:
+        """Clean up and terminate the sandbox."""
+        ...
+```
+
+### ExecResult structure
+
+```python
+class ExecResult(Protocol):
+    """Result of executing a command."""
+
+    @property
+    def returncode(self) -> int:
+        """Exit code of the command."""
+        ...
+
+    def stdout_read(self) -> str:
+        """Read stdout output."""
+        ...
+
+    def stderr_read(self) -> str:
+        """Read stderr output."""
+        ...
+```
+
+## Using backends programmatically
+
+### Get backend instance
+
+```python
+from cooperbench.eval.backends import get_backend
+
+# Get Modal backend
+modal_backend = get_backend("modal")
+
+# Get Docker backend
+docker_backend = get_backend("docker")
+
+# Get GCP backend
+gcp_backend = get_backend("gcp")
+```
+
+### Create and use sandbox
+
+```python
+from cooperbench.eval.backends import get_backend
+
+# Create a sandbox
+backend = get_backend("modal")
+sandbox = backend.create_sandbox(
+    image="cooperbench/llama_index_task:task1",
+    timeout=600,
+    workdir="/workspace",
+)
+
+try:
+    # Run commands
+    result = sandbox.exec("bash", "-c", "python --version")
+    print(f"Exit code: {result.returncode}")
+    print(f"Output: {result.stdout_read()}")
+
+    # Apply a patch
+    result = sandbox.exec("git", "apply", "agent.patch")
+
+    # Run tests
+    result = sandbox.exec("pytest", "tests/")
+    print(f"Tests {'passed' if result.returncode == 0 else 'failed'}")
+finally:
+    sandbox.terminate()
+```
+
+## Modal backend
+
+### Setup
+
+1. Install Modal:
+
+```bash
+pip install modal
+```
+
+2. Authenticate:
+
+```bash
+modal token new
+```
+
+3. Use in CooperBench:
+
+```python
+from cooperbench import run
+
+run(
+    run_name="modal_test",
+    subset="lite",
+    backend="modal",
+)
+```
+
+### Features
+
+- Serverless execution (no infrastructure to manage)
+- Fast cold starts (typically under 10 seconds)
+- Auto-scaling based on concurrency
+- Pay-per-second billing
+
+### Configuration
+
+Modal is configured via environment variables:
+
+```bash
+export MODAL_TOKEN_ID="your-token-id"
+export MODAL_TOKEN_SECRET="your-token-secret"
+```
+
+## Docker backend
+
+### Setup
+
+1. Install Docker:
+
+```bash
+# See https://docs.docker.com/get-docker/
+```
+
+2. Pull required images:
+
+```bash
+docker pull cooperbench/llama_index_task:task1
+docker pull cooperbench/django_task:task5
+# etc.
+```
+
+3. Use in CooperBench:
+
+```python
+from cooperbench import run
+
+run(
+    run_name="docker_test",
+    subset="lite",
+    backend="docker",
+    concurrency=5,  # Adjust based on your CPU
+)
+```
+
+### Features
+
+- Runs locally (no internet required)
+- No additional costs
+- Full control over environment
+- Good for debugging
+
+### Configuration
+
+```python
+from cooperbench.eval.backends.docker import DockerBackend
+
+# Create Docker backend with custom settings
+backend = DockerBackend()
+sandbox = backend.create_sandbox(
+    image="cooperbench/llama_index_task:task1",
+    timeout=300,
+    workdir="/workspace",
+)
+```
+
+## GCP Batch backend
+
+### Setup
+
+1. Install GCP SDK:
+
+```bash
+pip install google-cloud-batch google-cloud-storage
+```
+
+2. Authenticate:
+
+```bash
+gcloud auth application-default login
+```
+
+3. Set project:
+
+```bash
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+export GCP_REGION="us-central1"
+```
+
+4. Use in CooperBench:
+
+```python
+from cooperbench import evaluate
+
+# GCP is best for large-scale evaluation
+evaluate(
+    run_name="large_experiment",
+    backend="gcp",
+    concurrency=100,
+)
+```
+
+### Features
+
+- Massive parallelism (1000+ concurrent tasks)
+- Batch job optimization (single VM startup for many tasks)
+- Cost-effective for large-scale runs
+- Auto-cleanup of resources
+
+### Batch evaluation
+
+For GCP, evaluation uses batch mode by default:
+
+```python
+from cooperbench import evaluate
+
+# Submits all tasks as a single batch job
+evaluate(
+    run_name="my_experiment",
+    backend="gcp",
+    concurrency=200,  # Tasks run in parallel within the batch
+)
+```
+
+Batch mode is more efficient because:
+- Single VM startup amortized across all tasks
+- Tasks run in parallel on the VM
+- Automatic cleanup after completion
+
+### Configuration
+
+```python
+from cooperbench.eval.backends.gcp import GCPBatchBackend
+
+backend = GCPBatchBackend(
+    project_id="your-project",
+    region="us-central1",
+    machine_type="n1-standard-4",
+)
+```
+
+Environment variables:
+
+```bash
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+export GCP_REGION="us-central1"  # Optional, defaults to us-central1
+export GCP_MACHINE_TYPE="n1-standard-4"  # Optional
+```
+
+## Advanced usage
+
+### Custom backend implementation
+
+You can implement custom backends:
+
+```python
+from cooperbench.eval.backends.base import EvalBackend, Sandbox, ExecResult
+from dataclasses import dataclass
+
+@dataclass
+class MyExecResult:
+    returncode: int
+    _stdout: str
+    _stderr: str
+
+    def stdout_read(self) -> str:
+        return self._stdout
+
+    def stderr_read(self) -> str:
+        return self._stderr
+
+class MySandbox:
+    def __init__(self, image: str, timeout: int, workdir: str):
+        self.image = image
+        self.timeout = timeout
+        self.workdir = workdir
+        # Initialize your sandbox
+
+    def exec(self, *args: str) -> ExecResult:
+        # Execute command in your sandbox
+        return MyExecResult(
+            returncode=0,
+            _stdout="Command output",
+            _stderr="",
+        )
+
+    def terminate(self) -> None:
+        # Clean up
+        pass
+
+class MyBackend:
+    def create_sandbox(
+        self,
+        image: str,
+        timeout: int = 600,
+        workdir: str = "/workspace",
+    ) -> Sandbox:
+        return MySandbox(image, timeout, workdir)
+```
+
+### Use custom backend
+
+```python
+# Monkey-patch the backend getter
+from cooperbench.eval import backends
+
+original_get_backend = backends.get_backend
+
+def custom_get_backend(name: str):
+    if name == "my_backend":
+        return MyBackend()
+    return original_get_backend(name)
+
+backends.get_backend = custom_get_backend
+
+# Now use it
+from cooperbench import run
+
+run(
+    run_name="custom_backend_test",
+    subset="lite",
+    backend="my_backend",
+)
+```
+
+### Direct sandbox usage
+
+```python
+from cooperbench.eval.backends import get_backend
+
+backend = get_backend("modal")
+
+# Create sandbox
+sandbox = backend.create_sandbox(
+    image="python:3.11-slim",
+    timeout=300,
+)
+
+try:
+    # Install dependencies
+    sandbox.exec("pip", "install", "requests")
+
+    # Run your code
+    result = sandbox.exec(
+        "python",
+        "-c",
+        "import requests; print(requests.__version__)",
+    )
+
+    print(result.stdout_read())
+finally:
+    sandbox.terminate()
+```
+
+## Best practices
+
+### Choose the right backend
+
+- **Development**: Use Modal for fast iteration
+- **Debugging**: Use Docker for local control
+- **Large-scale**: Use GCP for cost-effective parallelism
+
+### Optimize concurrency
+
+```python
+# Modal: high concurrency works well
+run(
+    run_name="modal_run",
+    subset="full",
+    backend="modal",
+    concurrency=100,
+)
+
+# Docker: adjust based on CPU cores
+import multiprocessing
+cpu_count = multiprocessing.cpu_count()
+
+run(
+    run_name="docker_run",
+    subset="full",
+    backend="docker",
+    concurrency=cpu_count - 1,  # Leave one core free
+)
+
+# GCP: very high concurrency for evaluation
+evaluate(
+    run_name="gcp_eval",
+    backend="gcp",
+    concurrency=200,
+)
+```
+
+### Handle timeouts
+
+```python
+# Increase timeout for complex tasks
+run(
+    run_name="complex_tasks",
+    subset="lite",
+    backend="modal",
+    # Agent timeout configured in agent settings
+)
+
+# For evaluation, timeout is per-test
+from cooperbench import run_patch_test
+
+result = run_patch_test(
+    repo_name="llama_index_task",
+    task_id=1,
+    feature_id=1,
+    agent_patch="path/to/patch",
+    timeout=1200,  # 20 minutes
+    backend="modal",
+)
+```
+
+## Related functions
+
+- [run()](/api/run) - Execute tasks with backends
+- [evaluate()](/api/evaluate) - Evaluate with backends
+- [get_backend()](/api/backends#get-backend-instance) - Get backend instance

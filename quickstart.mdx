@@ -1,80 +1,431 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Run your first CooperBench experiment in minutes and evaluate agent coordination
 ---
 
-## Get started in three steps
+<Note>
+Before starting, ensure you've completed the [installation](/installation) and have:
+- An execution backend configured (Modal, GCP, or Docker)
+- Redis running (for cooperative mode)
+- LLM API keys in your `.env` file
+- Dataset downloaded to `dataset/`
+</Note>
 
-Get your documentation site running locally and make your first customization.
+## Your first experiment
 
-### Step 1: Set up your local environment
+Let's run a cooperative experiment with two agents working on a task from the llama_index repository.
+
+<Steps>
+  <Step title="Run cooperative agents">
+    Execute a task with two agents, each implementing one feature:
+
+    ```bash
+    cooperbench run -n my-first-experiment -r llama_index_task -m gpt-4o
+    ```
+
+    This command:
+    - Creates an experiment named `my-first-experiment`
+    - Filters tasks to the `llama_index_task` repository
+    - Uses GPT-4o as the LLM model
+    - Runs in cooperative mode (default: two agents with messaging)
+    - Uses Modal backend (default)
+    - Enables automatic evaluation after completion
+
+    <Accordion title="What happens during execution">
+      1. CooperBench loads tasks from `dataset/llama_index_task/`
+      2. For each task, it spawns two sandboxed environments
+      3. Each agent receives one feature description and can:
+         - Read/write code files
+         - Run tests
+         - Send messages to the other agent via Redis
+      4. Agents work concurrently until completion or timeout
+      5. Generated patches are saved to `logs/my-first-experiment/`
+      6. Evaluation runs automatically (if `--no-auto-eval` not specified)
+    </Accordion>
+  </Step>
+
+  <Step title="Monitor progress">
+    Watch the output as agents work:
+
+    ```
+    [CooperBench] Starting experiment: my-first-experiment
+    [CooperBench] Setting: coop (2 agents per task)
+    [CooperBench] Model: gpt-4o
+    [CooperBench] Backend: modal
+    [CooperBench] Found 12 tasks in llama_index_task
+    [CooperBench] Running with concurrency=30
+    
+    [Task 1/12] llama_index_task/task8394 features_1_2
+      Agent 1: Implementing feature 1...
+      Agent 2: Implementing feature 2...
+      Agent 1 → Agent 2: "I'm adding a new method to the BaseIndex class"
+      Agent 2 → Agent 1: "Acknowledged, I'll avoid modifying that class"
+    [Task 1/12] ✓ Complete in 3m 42s
+    
+    ...
+    ```
+  </Step>
+
+  <Step title="View results">
+    After completion, check the results:
+
+    ```bash
+    # Results are saved in logs/
+    ls logs/my-first-experiment/
+    ```
+
+    Output structure:
+    ```
+    logs/my-first-experiment/
+      llama_index_task/
+        task8394/
+          features_1_2/
+            agent1/
+              trajectory.json     # Full agent interaction log
+              patch.diff          # Generated code changes
+            agent2/
+              trajectory.json
+              patch.diff
+            eval.json             # Test results and metrics
+        task8395/
+          ...
+    ```
+  </Step>
+</Steps>
+
+## Run a solo experiment
+
+Compare cooperative performance against a single agent handling both features:
+
+```bash
+cooperbench run -n my-solo-experiment -r llama_index_task -m gpt-4o --setting solo
+```
+
+<Tip>
+Solo experiments provide a baseline for measuring the coordination deficit. Running both settings on the same tasks reveals how much performance degrades with coordination.
+</Tip>
+
+## Evaluate results
+
+If you disabled auto-evaluation or want to re-evaluate:
+
+```bash
+cooperbench eval -n my-first-experiment
+```
+
+Evaluation tests each generated patch against the golden test suite:
+
+<CodeGroup>
+
+```json eval.json
+{
+  "agent1": {
+    "tests_passed": 12,
+    "tests_failed": 1,
+    "success": false,
+    "error": "AssertionError in test_feature1_edge_case"
+  },
+  "agent2": {
+    "tests_passed": 8,
+    "tests_failed": 0,
+    "success": true,
+    "error": null
+  },
+  "merged": {
+    "tests_passed": 18,
+    "tests_failed": 3,
+    "success": false,
+    "merge_conflict": true,
+    "error": "Merge conflict in src/index.py"
+  },
+  "overall_success": false
+}
+```
+
+</CodeGroup>
+
+## Example output structure
+
+Here's what a complete experiment looks like:
+
+```
+logs/my-first-experiment/
+  llama_index_task/
+    task8394/
+      features_1_2/          # Feature pair 1 and 2
+        agent1/
+          trajectory.json    # Agent's full interaction history
+          patch.diff         # Generated changes
+        agent2/
+          trajectory.json
+          patch.diff
+        eval.json            # Test results
+      features_1_3/          # Feature pair 1 and 3
+        ...
+    task8395/
+      ...
+  dspy_task/               # Another repository
+    task1234/
+      ...
+```
+
+<Accordion title="Understanding trajectory.json">
+The `trajectory.json` file contains the complete interaction history:
+
+```json
+{
+  "agent_id": "agent1",
+  "feature_id": 1,
+  "model": "gpt-4o",
+  "start_time": "2026-03-04T10:30:00Z",
+  "end_time": "2026-03-04T10:33:42Z",
+  "steps": [
+    {
+      "action": "read_file",
+      "args": {"path": "src/index.py"},
+      "observation": "...",
+      "timestamp": "2026-03-04T10:30:05Z"
+    },
+    {
+      "action": "send_message",
+      "args": {"content": "I'm adding a new method..."},
+      "observation": "Message sent",
+      "timestamp": "2026-03-04T10:31:12Z"
+    },
+    ...
+  ],
+  "token_usage": {
+    "prompt_tokens": 45230,
+    "completion_tokens": 3821,
+    "total_tokens": 49051
+  }
+}
+```
+</Accordion>
+
+## Advanced usage
+
+### Filter by specific task
+
+Run a single task by ID:
+
+```bash
+cooperbench run -n test-task -r llama_index_task -t 8394 -m gpt-4o
+```
+
+### Run specific feature pairs
+
+Test a particular combination of features:
+
+```bash
+cooperbench run -n test-features -r dspy_task -f 1,2 -m claude-sonnet-4.5
+```
+
+### Use different backends
+
+<CodeGroup>
+
+```bash Modal (cloud)
+cooperbench run -n exp-modal --backend modal -r llama_index_task -m gpt-4o
+```
+
+```bash GCP (scale)
+cooperbench run -n exp-gcp --backend gcp -r llama_index_task -m gpt-4o
+```
+
+```bash Docker (local)
+cooperbench run -n exp-docker --backend docker -r llama_index_task -m gpt-4o
+```
+
+</CodeGroup>
+
+### Enable git collaboration
+
+Allow agents to push/pull/merge via shared Git remote:
+
+```bash
+cooperbench run -n git-collab -r llama_index_task -m gpt-4o --git
+```
+
+<Warning>
+Git collaboration is experimental and may increase coordination complexity. Start with messaging-only mode (default) first.
+</Warning>
+
+### Disable messaging
+
+Run agents without inter-agent communication:
+
+```bash
+cooperbench run -n no-msg -r llama_index_task -m gpt-4o --no-messaging
+```
+
+This reveals how much communication helps reduce conflicts.
+
+### Use different models
+
+CooperBench supports any model via LiteLLM:
+
+<CodeGroup>
+
+```bash OpenAI
+cooperbench run -n test -r llama_index_task -m gpt-4o
+cooperbench run -n test -r llama_index_task -m gpt-5
+```
+
+```bash Anthropic
+cooperbench run -n test -r llama_index_task -m claude-sonnet-4.5
+cooperbench run -n test -r llama_index_task -m claude-opus-4
+```
+
+```bash Google
+cooperbench run -n test -r llama_index_task -m gemini/gemini-3-flash-preview
+cooperbench run -n test -r llama_index_task -m gemini/gemini-pro-2.0
+```
+
+```bash Custom provider
+cooperbench run -n test -r llama_index_task -m together_ai/meta-llama/Llama-3-70b
+```
+
+</CodeGroup>
+
+### Run on dataset subsets
+
+Use predefined task subsets for faster iteration:
+
+```bash
+# Run on the "lite" subset (smaller, faster)
+cooperbench run --setting solo -s lite -m gpt-4o
+
+# Experiment name is auto-generated: solo-msa-gpt-4o-lite
+```
+
+<Note>
+Subsets are defined in `dataset/subsets/`. Check available subsets:
+```bash
+ls dataset/subsets/
+```
+</Note>
+
+### Control concurrency
+
+Adjust parallel execution for your backend's capacity:
+
+```bash
+# Higher concurrency for cloud backends
+cooperbench run -n test -r llama_index_task -m gpt-4o -c 50
+
+# Lower concurrency for local Docker
+cooperbench run -n test --backend docker -m gpt-4o -c 5
+```
+
+## Python API
+
+Use CooperBench programmatically:
+
+```python
+from cooperbench import run, evaluate
+
+# Run cooperative agents
+run(
+    run_name="my-experiment",
+    repo="llama_index_task",
+    model_name="gpt-4o",
+    setting="coop",
+    redis_url="redis://localhost:6379",
+    backend="modal",
+)
+
+# Run solo baseline
+run(
+    run_name="my-solo-baseline",
+    repo="llama_index_task",
+    model_name="gpt-4o",
+    setting="solo",
+    backend="modal",
+)
+
+# Evaluate both
+evaluate(run_name="my-experiment")
+evaluate(run_name="my-solo-baseline")
+```
+
+<Accordion title="Available Python API parameters">
+```python
+def run(
+    run_name: str,                    # Experiment name (required)
+    subset: str | None = None,        # Dataset subset (e.g., "lite")
+    repo: str | None = None,          # Filter by repository
+    task_id: int | None = None,       # Filter by task ID
+    features: list[int] | None = None,  # Specific feature pair
+    model_name: str = "vertex_ai/gemini-3-flash-preview",
+    agent: str = "mini_swe_agent",    # Agent framework
+    concurrency: int = 30,            # Parallel tasks
+    setting: str = "coop",            # "coop" or "solo"
+    redis_url: str = "redis://localhost:6379",
+    force: bool = False,              # Rerun existing results
+    git_enabled: bool = False,        # Enable git collaboration
+    messaging_enabled: bool = True,   # Enable messaging
+    auto_eval: bool = True,           # Auto-evaluate after run
+    eval_concurrency: int = 10,
+    backend: str = "modal",           # "modal", "gcp", or "docker"
+    agent_config: str | None = None,  # Path to agent config file
+) -> None:
+    ...
+```
+</Accordion>
+
+## Understanding results
+
+### Success metrics
+
+Each evaluation provides several success indicators:
+
+- **Individual success**: Did each agent's patch pass its own tests?
+- **Merge success**: Did the patches merge without conflicts?
+- **Overall success**: Did the merged result pass all tests?
+
+<Info>
+A task succeeds only if all agents' patches pass their tests AND the merged result passes all combined tests.
+</Info>
+
+### Common failure modes
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+  <Accordion title="Expectation failures (42%)" icon="circle-question">
+    Agents fail to integrate partner state information. For example:
+    - Agent 1 adds a new parameter to a function
+    - Agent 2 calls that function without the new parameter
+    - Tests fail despite no merge conflicts
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+
+  <Accordion title="Communication failures (26%)" icon="comment-slash">
+    Questions go unanswered, breaking decision loops:
+    - Agent 1 asks: "Should I use sync or async?"
+    - Agent 2 doesn't respond or gives an unclear answer
+    - Agent 1 proceeds with a guess that conflicts with Agent 2's choice
   </Accordion>
-</AccordionGroup>
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
+  <Accordion title="Commitment failures (32%)" icon="handshake-slash">
+    Agents break promises or make unverifiable claims:
+    - Agent 1 promises to "add type hints"
+    - Agent 1's patch has incomplete type annotations
+    - Agent 2's code assumes full type coverage and fails
   </Accordion>
 </AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="CLI reference" icon="terminal" href="/cli/run">
+    Explore all CLI commands and options
+  </Card>
+  <Card title="Configuration" icon="gear" href="/cli/backends">
+    Configure backends, agents, and models
+  </Card>
+  <Card title="Dataset" icon="database" href="/concepts/dataset">
+    Understand the benchmark dataset structure
+  </Card>
+  <Card title="Evaluation" icon="check" href="/guides/evaluation">
+    Deep dive into evaluation metrics
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

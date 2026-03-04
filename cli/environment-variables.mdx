@@ -1,0 +1,395 @@
+---
+title: Environment variables
+description: Configure CooperBench with environment variables
+---
+
+CooperBench uses environment variables for API keys, configuration paths, and runtime settings.
+
+## LLM provider API keys
+
+At least one LLM provider API key is required.
+
+### OpenAI
+
+```bash
+export OPENAI_API_KEY=sk-...
+```
+
+Required for OpenAI models:
+- `gpt-4o`
+- `gpt-4o-mini`
+- `gpt-4-turbo`
+- `o1`, `o1-mini`
+
+### Anthropic
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Required for Anthropic models:
+- `claude-3-5-sonnet-20241022`
+- `anthropic/claude-opus-4-20250514`
+- `claude-3-opus-20240229`
+
+### Google Gemini
+
+```bash
+export GEMINI_API_KEY=AIza...
+```
+
+Required for Gemini models via API:
+- `gemini/gemini-pro`
+- `gemini/gemini-1.5-flash`
+- `gemini/gemini-1.5-pro`
+
+For Vertex AI models (e.g., `vertex_ai/gemini-3-flash-preview`), use GCP authentication instead.
+
+## Google Cloud Platform
+
+### Authentication
+
+**Option 1: Application Default Credentials (recommended)**
+
+```bash
+gcloud auth application-default login
+```
+
+This creates `~/.config/gcloud/application_default_credentials.json`.
+
+**Option 2: Service account key**
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+```
+
+### Project configuration
+
+```bash
+export GOOGLE_CLOUD_PROJECT=my-project-123
+```
+
+Optional. Overrides project configured with `cooperbench config gcp`.
+
+## Redis (for cooperative mode)
+
+```bash
+export REDIS_URL=redis://localhost:6379
+```
+
+Required for multi-agent communication in cooperative mode. Default: `redis://localhost:6379`.
+
+Override with `--redis` flag:
+
+```bash
+cooperbench run --redis redis://my-server:6379
+```
+
+## Agent configuration
+
+### mini_swe_agent
+
+```bash
+# Config directory
+export MSWEA_CONFIG_DIR=./configs
+
+# Global config directory
+export MSWEA_GLOBAL_CONFIG_DIR=~/.config/mini-swe-agent
+
+# Model settings
+export MSWEA_MODEL_NAME=gpt-4o
+export MSWEA_MODEL_API_KEY=sk-...
+export MSWEA_MODEL_API_BASE=https://custom-endpoint.com/v1
+
+# Retry settings
+export MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=10
+
+# Cost tracking
+export MSWEA_COST_TRACKING=ignore_errors  # or "default"
+export MSWEA_GLOBAL_COST_LIMIT=10.0  # USD
+export MSWEA_GLOBAL_CALL_LIMIT=1000  # max API calls
+
+# LiteLLM registry
+export LITELLM_MODEL_REGISTRY_PATH=/path/to/registry.json
+
+# Startup behavior
+export MSWEA_SILENT_STARTUP=1  # Suppress startup messages
+
+# Docker executable
+export MSWEA_DOCKER_EXECUTABLE=docker  # or "podman"
+```
+
+### swe_agent
+
+```bash
+# Config directories
+export SWE_AGENT_CONFIG_ROOT=/path/to/configs
+export SWE_AGENT_CONFIG_DIR=/path/to/configs
+export SWE_AGENT_TOOLS_DIR=/path/to/tools
+export SWE_AGENT_TRAJECTORY_DIR=/path/to/trajectories
+
+# GitHub token (for fetching issues)
+export GITHUB_TOKEN=ghp_...
+```
+
+### openhands
+
+```bash
+# Logging
+export LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR
+export LOG_TO_FILE=true
+export LOG_DIR=logs
+export LOG_ROTATE_WHEN=midnight
+export LOG_BACKUP_COUNT=7
+export LOG_JSON=false
+export LOG_RICH_TRACEBACKS=true
+
+# CI mode
+export CI=true  # Suppress interactive prompts
+
+# Debugging
+export DEBUG_LLM=true  # Log all LLM calls
+
+# VNC (for browser use)
+export OH_ENABLE_VNC=true
+```
+
+## External agents
+
+```bash
+export COOPERBENCH_EXTERNAL_AGENTS=/path/to/agents.py
+```
+
+Path to Python module defining custom agents. See [Custom agents](/guides/custom-agents) for details.
+
+## Logging
+
+```bash
+# Suppress LiteLLM logs
+export LITELLM_LOG=ERROR  # or "DEBUG", "INFO", "WARNING"
+```
+
+CooperBench sets `LITELLM_LOG=ERROR` by default to reduce noise.
+
+## HuggingFace (optional)
+
+```bash
+export HF_TOKEN=hf_...
+```
+
+Optional. Used for uploading results to HuggingFace Hub.
+
+## .env file
+
+Create a `.env` file in your project root:
+
+```bash .env
+# LLM Provider API Keys (at least one required)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=AIza...
+
+# Redis (for cooperative mode)
+REDIS_URL=redis://localhost:6379
+
+# GCP (optional)
+GOOGLE_CLOUD_PROJECT=my-project-123
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+
+# HuggingFace (optional)
+HF_TOKEN=hf_...
+
+# GitHub (optional, for swe_agent)
+GITHUB_TOKEN=ghp_...
+
+# Agent settings
+MSWEA_GLOBAL_COST_LIMIT=10.0
+MSWEA_GLOBAL_CALL_LIMIT=1000
+```
+
+Load with:
+
+```bash
+source .env
+```
+
+Or use a tool like [direnv](https://direnv.net/):
+
+```bash
+echo 'dotenv' > .envrc
+direnv allow
+```
+
+## Example .env file
+
+CooperBench provides `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and fill in your API keys:
+
+```bash .env.example
+# CooperBench Environment Variables
+# Copy this file to .env and fill in your API keys
+
+# LLM Provider API Keys (at least one required)
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+
+# HuggingFace (optional, for saving results)
+HF_TOKEN=
+```
+
+## GCP-specific variables
+
+When using `--backend gcp`:
+
+```bash
+# Project (required)
+export GOOGLE_CLOUD_PROJECT=my-project-123
+
+# Authentication (one of these)
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+# OR use: gcloud auth application-default login
+
+# Region/zone (optional, overrides cooperbench config)
+export GCP_REGION=us-central1
+export GCP_ZONE=us-central1-a
+
+# Storage bucket (optional)
+export GCP_BUCKET=cooperbench-eval-my-project-123
+```
+
+## Precedence
+
+Environment variables override configuration files:
+
+1. **Command-line flags** (highest priority)
+2. **Environment variables**
+3. **Configuration files** (`~/.config/cooperbench/config.json`)
+4. **Built-in defaults** (lowest priority)
+
+Example:
+
+```bash
+# Config file says: redis://localhost:6379
+# Environment variable overrides:
+export REDIS_URL=redis://production:6379
+
+# Command-line flag overrides both:
+cooperbench run --redis redis://staging:6379
+```
+
+## Validation
+
+CooperBench validates required variables on startup:
+
+```bash
+cooperbench run
+```
+
+If API keys are missing:
+
+```
+Error: No LLM API key found. Please set one of:
+  - OPENAI_API_KEY
+  - ANTHROPIC_API_KEY
+  - GEMINI_API_KEY
+```
+
+## Security best practices
+
+1. **Never commit `.env` files:**
+
+   ```bash .gitignore
+   .env
+   .env.local
+   ```
+
+2. **Use restrictive permissions:**
+
+   ```bash
+   chmod 600 .env
+   ```
+
+3. **Rotate API keys regularly:**
+
+   Generate new keys periodically and revoke old ones.
+
+4. **Use service accounts for GCP:**
+
+   Avoid using personal credentials in production.
+
+5. **Limit key scopes:**
+
+   Create API keys with minimal required permissions.
+
+## Troubleshooting
+
+### "No API key found"
+
+```bash
+# Check if variable is set
+echo $OPENAI_API_KEY
+
+# If empty, set it
+export OPENAI_API_KEY=sk-...
+
+# Verify
+echo $OPENAI_API_KEY
+```
+
+### "GCP authentication failed"
+
+```bash
+# Re-authenticate
+gcloud auth application-default login
+
+# Or check service account key path
+echo $GOOGLE_APPLICATION_CREDENTIALS
+ls -la $GOOGLE_APPLICATION_CREDENTIALS
+```
+
+### "Redis connection refused"
+
+```bash
+# Check Redis is running
+redis-cli ping
+
+# If not, start Redis
+redis-server
+
+# Or update Redis URL
+export REDIS_URL=redis://correct-host:6379
+```
+
+### Variables not loading from .env
+
+```bash
+# Make sure to source the file
+source .env
+
+# Or use direnv
+echo 'dotenv' > .envrc
+direnv allow
+```
+
+## Reference table
+
+| Variable | Purpose | Required | Default |
+|----------|---------|----------|----------|
+| `OPENAI_API_KEY` | OpenAI API key | One of 3 LLM keys | - |
+| `ANTHROPIC_API_KEY` | Anthropic API key | One of 3 LLM keys | - |
+| `GEMINI_API_KEY` | Gemini API key | One of 3 LLM keys | - |
+| `REDIS_URL` | Redis connection URL | No | `redis://localhost:6379` |
+| `GOOGLE_CLOUD_PROJECT` | GCP project ID | For GCP backend | - |
+| `GOOGLE_APPLICATION_CREDENTIALS` | GCP service account key path | For GCP backend | - |
+| `HF_TOKEN` | HuggingFace token | No | - |
+| `GITHUB_TOKEN` | GitHub personal access token | No | - |
+| `MSWEA_GLOBAL_COST_LIMIT` | Max cost in USD | No | `0` (unlimited) |
+| `MSWEA_GLOBAL_CALL_LIMIT` | Max LLM API calls | No | `0` (unlimited) |
+| `LITELLM_LOG` | LiteLLM log level | No | `ERROR` |
+| `LOG_LEVEL` | OpenHands log level | No | `INFO` |
