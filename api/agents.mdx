@@ -12,7 +12,7 @@ CooperBench includes the following built-in agents:
 - **mini_swe_agent** (default) - Lightweight SWE-agent implementation
 - **mini_swe_agent_v2** - Enhanced version with improved tooling
 - **swe_agent** - Full SWE-agent framework
-- **openhands** - OpenHands agent SDK
+- **openhands_sdk** - OpenHands agent SDK
 
 ## Using agents
 
@@ -40,7 +40,7 @@ run(
 run(
     run_name="openhands_test",
     subset="lite",
-    agent="openhands",
+    agent="openhands_sdk",
 )
 ```
 
@@ -339,7 +339,7 @@ Agents run in Docker containers with:
 - **mini_swe_agent**: Fast, lightweight, good for most tasks
 - **mini_swe_agent_v2**: Enhanced tooling, better for complex tasks
 - **swe_agent**: Full-featured, best for maximum capability
-- **openhands**: Alternative framework with different strengths
+- **openhands_sdk**: Alternative framework with different strengths
 
 ### Optimize costs
 

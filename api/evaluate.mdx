@@ -251,6 +251,7 @@ A summary is also saved to `logs/{run_name}/eval_summary.json`:
 - [discover_runs()](/api/discover#discover_runs) - Query completed runs
 - [test_merged()](/api/evaluate#test_merged) - Low-level patch testing (cooperative)
 - [test_solo()](/api/evaluate#test_solo) - Low-level patch testing (solo)
+- [evaluate_merge()](/api/evaluate#evaluate_merge) - Training-compatible wrapper for test_merged()
 
 ## Low-level testing functions
 
@@ -377,3 +378,57 @@ print(f"Tests passed: {result['tests_passed']}/{result['tests_total']}")
 <ParamField path="backend" type="str" default="modal">
   Evaluation backend
 </ParamField>
+
+### evaluate_merge()
+
+Wrapper for `test_merged()` that returns results in a format compatible with training code.
+
+```python
+from cooperbench import evaluate_merge
+
+result = evaluate_merge(
+    repo_name="llama_index_task",
+    task_id=1,
+    feature1_id=1,
+    feature2_id=2,
+    patch1="diff --git a/file.py...",
+    patch2="diff --git a/other.py...",
+)
+
+print(f"Feature 1: {result['feature1_tests_passed']}/{result['feature1_tests_total']}")
+print(f"Feature 2: {result['feature2_tests_passed']}/{result['feature2_tests_total']}")
+if result.get('error'):
+    print(f"Error: {result['error']}")
+```
+
+#### Parameters
+
+Parameters are identical to `test_merged()`.
+
+#### Returns
+
+Returns a dictionary with the following keys:
+
+<ResponseField name="feature1_tests_passed" type="int">
+  Number of tests passed for feature 1
+</ResponseField>
+
+<ResponseField name="feature1_tests_total" type="int">
+  Total number of tests for feature 1
+</ResponseField>
+
+<ResponseField name="feature2_tests_passed" type="int">
+  Number of tests passed for feature 2
+</ResponseField>
+
+<ResponseField name="feature2_tests_total" type="int">
+  Total number of tests for feature 2
+</ResponseField>
+
+<ResponseField name="error" type="str | None">
+  Error message if evaluation failed, None otherwise
+</ResponseField>
+
+<Note>
+  This function is primarily used for training and benchmarking workflows that require a specific result format.
+</Note>
