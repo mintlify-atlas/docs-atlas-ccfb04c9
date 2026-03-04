@@ -1,0 +1,112 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "CooperBench",
+  "projectDescription": "A benchmark for evaluating how well AI coding agents can cooperate on software engineering tasks with potential conflicts",
+  "theme": "aspen",
+  "primaryColor": "#7c7c7c",
+  "lightColor": "#111111",
+  "darkColor": "#b2b2b2",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/dataset",
+              "concepts/settings",
+              "concepts/architecture"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/running-experiments",
+              "guides/evaluation",
+              "guides/backends",
+              "guides/gcp-setup",
+              "guides/custom-agents"
+            ]
+          },
+          {
+            "group": "Results & Analysis",
+            "pages": [
+              "results/findings",
+              "results/statistics",
+              "results/output-structure"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/config",
+              "cli/run",
+              "cli/eval"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "cli/backends",
+              "cli/agent-config",
+              "cli/environment-variables"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Python API",
+        "groups": [
+          {
+            "group": "Core Functions",
+            "pages": [
+              "api/run",
+              "api/evaluate",
+              "api/discover"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "api/agents",
+              "api/backends",
+              "api/environments"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "CLI tool for running multi-agent coordination benchmarks",
+    "Cooperative vs solo agent comparison with 652 tasks",
+    "Multiple execution backends: Modal, Docker, and GCP",
+    "Redis-based inter-agent messaging and git collaboration",
+    "Automated evaluation with patch testing and merge conflict detection",
+    "Support for multiple LLM providers and agent frameworks"
+  ],
+  "publicApiSurface": [
+    "cooperbench run - Run agents on benchmark tasks",
+    "cooperbench eval - Evaluate completed runs",
+    "cooperbench config - Configure execution backends",
+    "run() - Python API for running experiments",
+    "evaluate() - Python API for evaluation",
+    "discover_tasks() - Discover available benchmark tasks",
+    "discover_runs() - Discover completed experiment runs"
+  ]
+}
